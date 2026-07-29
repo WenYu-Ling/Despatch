@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon/icon-192.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>派遣儀表板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .delete-btn { display: none; }
+    .edit-mode .delete-btn { display: inline-flex; }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+
+  <!-- 頂部狀態列 -->
+  <header class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700 shadow-xl">
+    <div class="flex items-center space-x-3">
+      <h1 class="text-xl font-extrabold tracking-wide text-red-500">校園急救派遣</h1>
+    </div>
+    <div class="flex items-center space-x-6">
+      <div class="bg-gray-700/50 px-4 py-2 rounded-lg border border-gray-600">
+        <span class="text-xs text-gray-400 block">線上待命成員</span>
+        <span id="onDutyCount" class="text-xl font-bold text-green-400">0 人</span>
+      </div>
+      <button onclick="clearAllMissions()" class="px-4 py-2 bg-gray-700 hover:bg-red-700 text-gray-200 rounded-lg text-sm transition">
+        清除所有歷史記錄
+      </button>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">1. 選擇案件類型</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <button onclick="dispatch('內科派遣')" class="p-4 bg-blue-600 hover:bg-blue-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            內科派遣
+          </button>
+          <button onclick="dispatch('外科/創傷')" class="p-4 bg-orange-600 hover:bg-orange-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            外科/創傷
+          </button>
+          <button onclick="dispatch('OHCA 派遣')" class="p-4 bg-red-600 hover:bg-red-500 font-extrabold text-xl rounded-xl shadow-lg active:scale-95 transition border-2 border-red-300">
+            OHCA 派遣
+          </button>
+          <button onclick="dispatch('全員緊急召集')" class="p-4 bg-purple-600 hover:bg-purple-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            全員召集
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-sm font-bold text-gray-400 tracking-wider">2. 選擇或輸入案件地點</h2>
+          <div class="space-x-3 text-xs">
+            <button id="toggleEditBtn" onclick="toggleEditMode()" class="text-amber-400 hover:underline font-bold">編輯地點</button>
+            <button onclick="addLocation()" class="text-blue-400 hover:underline font-bold">新增快捷地點</button>
+          </div>
+        </div>
+
+        <div id="locationWall" class="flex flex-wrap gap-2 mb-4"></div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">選擇/輸入地點</label>
+            <input id="selectedLocation" type="text" placeholder="點選上方快捷地點或直接輸入..." class="w-full bg-gray-900 border border-gray-700 p-3 rounded-lg text-yellow-400 font-bold focus:outline-none focus:border-yellow-500">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">詳細補充 (例如：3樓簡報室門口)</label>
+            <input id="locationDetail" type="text" placeholder="補充樓層或特徵..." class="w-full bg-gray-900 border border-gray-700 p-3 rounded-lg text-white focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">3. 案件列表與即時時間動態</h2>
+        <div id="missionLog" class="space-y-4">
+          <p class="text-gray-500 text-sm">目前無處理中案件</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 flex flex-col h-max">
+      <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">成員即時動態牆</h2>
+      <div id="studentList" class="space-y-3 divide-y divide-gray-700/50">
+        <p class="text-gray-500 text-sm pt-2">暫無成員上線</p>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let isEditMode = false;
+
+    const evtSource = new EventSource('/api/stream');
+    evtSource.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.customLocations) renderLocations(data.customLocations);
+      if (data.studentStatus) renderStudents(data.studentStatus);
+      if (data.activeMissions) renderMissions(data.activeMissions);
+    };
+
+    function toggleEditMode() {
+      isEditMode = !isEditMode;
+      const wall = document.getElementById('locationWall');
+      const btn = document.getElementById('toggleEditBtn');
+      if (isEditMode) {
+        wall.classList.add('edit-mode');
+        btn.innerText = '完成編輯';
+      } else {
+        wall.classList.remove('edit-mode');
+        btn.innerText = '編輯地點';
+      }
+    }
+
+    function renderLocations(locations) {
+      const wall = document.getElementById('locationWall');
+      wall.innerHTML = locations.map(loc => `
+        <div class="inline-flex items-center bg-gray-700 rounded-lg overflow-hidden border border-gray-600">
+          <button onclick="selectLocation('${loc}')" class="px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600 active:scale-95 transition">
+            ${loc}
+          </button>
+          <button onclick="deleteLocation('${loc}')" class="delete-btn px-2 py-2 bg-red-600/80 hover:bg-red-600 text-white text-xs font-bold transition">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function selectLocation(loc) {
+      if (isEditMode) return;
+      document.getElementById('selectedLocation').value = loc;
+    }
+
+    async function addLocation() {
+      const loc = prompt('請輸入新增的常用校園地點：');
+      if (loc && loc.trim() !== '') {
+        await fetch('/api/locations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location: loc.trim() })
+        });
+      }
+    }
+
+    async function deleteLocation(loc) {
+      if (confirm(`確定要刪除地點「${loc}」嗎？`)) {
+        await fetch('/api/locations', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location: loc })
+        });
+      }
+    }
+
+    async function dispatch(type) {
+      const location = document.getElementById('selectedLocation').value.trim();
+      const detail = document.getElementById('locationDetail').value.trim();
+      if (!location) return alert('請輸入或選擇案件地點！');
+
+      await fetch('/api/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, location, detail })
+      });
+
+      document.getElementById('locationDetail').value = '';
+    }
+
+    // 衛保組發送聊天補充訊息
+    async function sendAdminChat(missionId) {
+      const input = document.getElementById(`admin_chat_input_${missionId}`);
+      const message = input ? input.value.trim() : '';
+      if (!message) return alert('請輸入訊息內容！');
+
+      await fetch('/api/missions/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ missionId, message })
+      });
+
+      input.value = '';
+    }
+
+    async function closeSingleMission(id) {
+      if (confirm('確定要將此案件結案嗎？')) {
+        await fetch('/api/missions/close-single', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+      }
+    }
+
+    async function deleteSingleMission(id) {
+      if (confirm('確定要刪除此案件紀錄嗎？')) {
+        await fetch('/api/missions/delete-single', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+      }
+    }
+
+    async function clearAllMissions() {
+      if (confirm('確定要清除所有歷史案件紀錄嗎？')) {
+        await fetch('/api/missions/clear', { method: 'POST' });
+      }
+    }
+
+    function renderMissions(missions) {
+      const log = document.getElementById('missionLog');
+      if (missions.length === 0) {
+        log.innerHTML = `<p class="text-gray-500 text-sm">目前無處理中案件</p>`;
+        return;
+      }
+
+      log.innerHTML = missions.map(m => {
+        const isClosed = m.status === '已結案';
+        
+        // 渲染隊員動態紀錄
+        const logsHtml = m.responseLogs.length > 0
+          ? m.responseLogs.map(l => {
+              let badgeStyle = 'bg-blue-900/60 text-blue-300';
+              let displayStatus = l.status;
+
+              if (l.status === '已到場') {
+                badgeStyle = 'bg-yellow-900/60 text-yellow-300';
+              } else if (l.status === '已拒絕') {
+                badgeStyle = 'bg-red-900 text-red-200 border border-red-500 font-bold';
+                displayStatus = '已拒絕';
+              } else if (l.status === '已離場') {
+                badgeStyle = 'bg-green-900/80 text-green-200 border border-green-600 font-bold';
+                displayStatus = '已離場';
+              }
+
+              return `
+                <div class="flex justify-between items-center text-xs text-gray-300 py-1 border-b border-gray-700/50">
+                  <span>👤 <strong class="text-gray-100">${l.name}</strong></span>
+                  <span class="px-2.5 py-0.5 rounded ${badgeStyle}">${displayStatus}</span>
+                  <span class="text-gray-400 font-mono">${l.time}</span>
+                </div>
+              `;
+            }).join('')
+          : `<p class="text-xs text-gray-500 py-1">尚未有成員回應</p>`;
+
+        // 渲染對話廣播訊息
+        const chatHtml = (m.chatMessages || []).length > 0
+          ? m.chatMessages.map(msg => {
+              const isAdmin = msg.role === 'admin';
+              return `
+                <div class="p-2 rounded border text-xs ${
+                  isAdmin 
+                    ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' 
+                    : 'bg-gray-800 border-gray-600 text-gray-200'
+                }">
+                  <div class="flex justify-between items-center mb-0.5 font-bold">
+                    <span>${isAdmin ? '🗣️ ' : '👤 '}${msg.sender}</span>
+                    <span class="text-gray-400 font-mono">${msg.time}</span>
+                  </div>
+                  <div>${msg.text}</div>
+                </div>
+              `;
+            }).join('')
+          : `<p class="text-xs text-gray-500 py-1">對話頻道暫無訊息</p>`;
+
+        return `
+          <div class="p-5 ${isClosed ? 'bg-gray-800/60 border-gray-700' : 'bg-red-950/40 border-red-700/60'} border rounded-xl shadow-lg space-y-4">
+            <div class="flex justify-between items-start">
+              <div>
+                <span class="text-xs font-bold ${isClosed ? 'bg-gray-700 text-gray-300' : 'bg-red-800 text-red-200'} px-2.5 py-1 rounded-md">${m.type}</span>
+                <span class="text-xs text-gray-400 ml-2 font-mono">派遣時間：${m.createdAt}</span>
+                ${m.closedAt ? `<span class="text-xs text-gray-500 ml-2 font-mono">(結案：${m.closedAt})</span>` : ''}
+                <h3 class="text-xl font-extrabold text-yellow-400 mt-2">${m.location}</h3>
+                ${m.detail ? `<p class="text-sm text-gray-300 mt-1">${m.detail}</p>` : ''}
+              </div>
+
+              <div class="flex flex-col items-end space-y-2">
+                <span class="px-3 py-1 rounded-full text-xs fㄏont-bold ${isClosed ? 'bg-gray-700 text-gray-400' : 'bg-red-600/30 text-red-300 border border-red-500'}">
+                  ${m.status}
+                </span>
+                
+                <div class="flex space-x-2 pt-2">
+                  ${!isClosed ? `
+                    <button onclick="closeSingleMission(${m.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded shadow transition">
+                    結案
+                    </button>
+                  ` : ''}
+                  <button onclick="deleteSingleMission(${m.id})" class="px-3 py-1 bg-red-800/80 hover:bg-red-700 text-red-200 text-xs font-bold rounded shadow transition">
+                    刪除
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              
+              <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-700/60">
+                <div class="text-xs font-bold text-gray-400 mb-2 flex justify-between">
+                  <span>成員動態紀錄</span>
+                  <span>${m.responseLogs.length} 筆</span>
+                </div>
+                <div class="space-y-1 max-h-40 overflow-y-auto pr-1">
+                  ${logsHtml}
+                </div>
+              </div>
+
+              <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-700/60 flex flex-col justify-between space-y-2">
+                <div>
+                  <div class="text-xs font-bold text-yellow-300 mb-2">現場與派遣即時廣播頻道</div>
+                  <div class="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    ${chatHtml}
+                  </div>
+                </div>
+
+                ${!isClosed ? `
+                  <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
+                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送補充指令/訊息給成員..." class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
+                    <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
+                      發送指令
+                    </button>
+                  </div>
+                ` : ''}
+              </div>
+
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderStudents(students) {
+      const list = document.getElementById('studentList');
+      const keys = Object.keys(students);
+      
+      const onDutyCount = keys.filter(k => students[k].status !== 'Off Duty').length;
+      document.getElementById('onDutyCount').innerText = `${onDutyCount} 人`;
+
+      if (keys.length === 0) {
+        list.innerHTML = `<p class="text-gray-500 text-sm pt-2">暫無成員上線</p>`;
+        return;
+      }
+
+      list.innerHTML = keys.map(name => {
+        const s = students[name];
+        const isOff = s.status === 'Off Duty';
+        const displayStatus = isOff ? 'Off Duty' : 'On Duty';
+        const badgeColor = isOff 
+          ? "bg-gray-700 text-gray-400" 
+          : "bg-green-900/60 text-green-300 border border-green-600";
+
+        return `
+          <div class="pt-3 flex justify-between items-center">
+            <div>
+              <span class="font-bold text-sm text-gray-200 block">${name}</span>
+              <span class="text-xs text-gray-500 font-mono">${s.updatedAt || ''}</span>
+            </div>
+            <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
+          </div>
+        `;
+      }).join('');
+    }
+  </script>
+</body>
+</html>
