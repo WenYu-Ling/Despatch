@@ -108,7 +108,8 @@ app.post('/api/student/status', (req, res) => {
     // 隊員勤務狀態變更 (On Duty / Off Duty / 已接單 / 已到場 / 已拒絕 / 已離場)
     studentStatus[name] = { 
       status: (status === 'Off Duty') ? 'Off Duty' : 'On Duty', 
-      updatedAt: nowStr 
+      updatedAt: nowStr, // 修正：補上逗號
+      timestamp: Date.now() 
     };
 
     if (missionId) {
@@ -212,6 +213,39 @@ app.get('/api/stream', (req, res) => {
     sseClients = sseClients.filter(client => client.id !== clientId);
   });
 });
+
+// 11. 手動刪除不線上成員 API
+app.post('/api/student/remove', (req, res) => {
+  const { name } = req.body;
+  if (name && studentStatus[name]) {
+    delete studentStatus[name];
+    broadcastSSE({ action: 'UPDATE_ALL', activeMissions, studentStatus });
+  }
+  res.json({ success: true });
+});
+
+// 12. 超過 10 分鐘未更新自動刪除成員機制
+setInterval(() => {
+  const now = Date.now();
+  let hasChanges = false;
+
+  for (const [name, info] of Object.entries(studentStatus)) {
+    if (!info.timestamp) {
+      info.timestamp = now;
+      continue;
+    }
+
+    // 10 分鐘 = 600,000 毫秒
+    if (now - info.timestamp > 10 * 60 * 1000) {
+      delete studentStatus[name];
+      hasChanges = true;
+    }
+  }
+
+  if (hasChanges) {
+    broadcastSSE({ action: 'UPDATE_ALL', activeMissions, studentStatus });
+  }
+}, 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`派遣系統已於 http://localhost:${PORT} 啟動`));
