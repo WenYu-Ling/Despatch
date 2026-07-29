@@ -29,9 +29,13 @@ function broadcastSSE(data) {
 
 function getTimeToMinute() {
   const now = new Date();
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  const options = {
+    timeZone: 'Asia/Taipei',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  };
+  return new Intl.DateTimeFormat('zh-TW', options).format(now);
 }
 
 // 1. VAPID Key API
