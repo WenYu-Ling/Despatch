@@ -147,7 +147,8 @@
   <script>
     let isEditMode = false;
     let evtSource = null;
-
+    let activeFocusedInputId = null;
+    
     function customConfirm(message) {
       return new Promise((resolve) => {
         const modal = document.getElementById('customConfirmModal');
@@ -314,35 +315,37 @@
     }
 
     async function sendAdminChat(missionId) {
-      const input = document.getElementById(`admin_chat_input_${missionId}`);
-      if (!input) return;
+    const inputId = `admin_chat_input_${missionId}`;
+    const input = document.getElementById(inputId);
+    if (!input) return;
 
-      const message = input.value.trim();
-      if (!message) return;
+    const message = input.value.trim();
+    if (!message) return;
 
-      input.value = '';
+    activeFocusedInputId = inputId;
+    input.value = '';
 
-      try {
-        const res = await fetch('/api/missions/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ missionId, message })
-        });
+    try {
+      const res = await fetch('/api/missions/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ missionId, message })
+      });
 
-        const result = await res.json();
-        if (!result.success) {
-          await customAlert('訊息發送失敗，請再試一次');
-          input.value = message;
-        }
-      } catch (err) {
-        console.error('Send message error:', err);
-        await customAlert('網路連線異常，訊息發送失敗');
+      const result = await res.json();
+      if (!result.success) {
+        await customAlert('訊息發送失敗，請再試一次');
         input.value = message;
-      } finally {
-        // 🆕 自動重新聚焦到輸入框，方便按完 Enter 後繼續打字
-        input.focus();
       }
+    } catch (err) {
+      console.error('Send message error:', err);
+      await customAlert('網路連線異常，訊息發送失敗');
+      input.value = message;
+    } finally {
+      const targetInput = document.getElementById(inputId);
+      if (targetInput) targetInput.focus();
     }
+  }
 
     async function closeSingleMission(id) {
       if (await customConfirm('確定要將此案件結案嗎？')) {
