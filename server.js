@@ -3,9 +3,7 @@ const webpush = require('web-push');
 const path = require('path');
 const { Redis } = require('@upstash/redis');
 
-// 初始化 Upstash Redis (自動讀取 Vercel 環境變數)
 const redis = Redis.fromEnv();
-
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -22,13 +20,29 @@ webpush.setVapidDetails(
 const DEFAULT_LOCATIONS = ['綜合教學大樓', '教穡大樓', '圖資館', '體育館', '操場', '風雨球場', '格致大樓', '電資二館', '工學院', '生資院', '人管院'];
 let sseClients = [];
 
-// 從 Redis 讀取全域資料
-async function getSystemData() {
-  const activeMissions = (await redis.get('activeMissions')) || [];
-  const studentStatus = (await redis.get('studentStatus')) || {};
-  const customLocations = (await redis.get('customLocations')) || DEFAULT_LOCATIONS;
-  const subscriptions = (await redis.get('subscriptions')) || [];
-  return { activeMissions, studentStatus, customLocations, subscriptions };
+// 💡 記憶體快取 (減少向 Redis 讀取的次數)
+let cache = {
+  activeMissions: null,
+  studentStatus: null,
+  customLocations: null,
+  subscriptions: null
+};
+
+// 統一讀取資料 (優先使用快取，無快取才讀 Redis)
+async function getSystemData(forceRefresh = false) {
+  if (forceRefresh || !cache.activeMissions || !cache.studentStatus) {
+    const [missions, status, locations, subs] = await Promise.all([
+      redis.get('activeMissions'),
+      redis.get('studentStatus'),
+      redis.get('customLocations'),
+      redis.get('subscriptions')
+    ]);
+    cache.activeMissions = missions || [];
+    cache.studentStatus = status || {};
+    cache.customLocations = locations || DEFAULT_LOCATIONS;
+    cache.subscriptions = subs || [];
+  }
+  return cache;
 }
 
 async function broadcastSSE(data = {}) {
@@ -43,43 +57,48 @@ async function broadcastSSE(data = {}) {
   sseClients.forEach(client => {
     try {
       client.res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    } catch (err) {
-      console.error('SSE write error:', err);
-    }
+    } catch (err) {}
   });
 }
 
 function getTimeToMinute() {
   const now = new Date();
-  const options = {
+  return new Intl.DateTimeFormat('zh-TW', {
     timeZone: 'Asia/Taipei',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false
-  };
-  return new Intl.DateTimeFormat('zh-TW', options).format(now);
+  }).format(now);
 }
 
 // 1. VAPID Key API
 app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
-// 2. Push API (持久化寫入 Redis)
+// 2. Push API (防重複訂閱寫入)
 app.post('/api/subscribe', async (req, res) => {
   const { subscription, name } = req.body;
   if (subscription && subscription.endpoint && name) {
-    let subscriptions = (await redis.get('subscriptions')) || [];
-    subscriptions = subscriptions.filter(sub => sub.name !== name && sub.endpoint !== subscription.endpoint);
-    subscriptions.push({ name, ...subscription });
-    await redis.set('subscriptions', subscriptions);
+    const data = await getSystemData();
+    let subscriptions = data.subscriptions;
+    
+    // 檢查是否已經存在相同的 Endpoint
+    const exists = subscriptions.some(sub => sub.name === name && sub.endpoint === subscription.endpoint);
+    
+    if (!exists) {
+      subscriptions = subscriptions.filter(sub => sub.name !== name && sub.endpoint !== subscription.endpoint);
+      subscriptions.push({ name, ...subscription });
+      cache.subscriptions = subscriptions;
+      await redis.set('subscriptions', subscriptions); // 只有 Endpoint 改變才寫入 Redis
+    }
 
-    let studentStatus = (await redis.get('studentStatus')) || {};
-    if (!studentStatus[name] || studentStatus[name].status === 'Off Duty') {
-      studentStatus[name] = {
+    if (!data.studentStatus[name] || data.studentStatus[name].status === 'Off Duty') {
+      data.studentStatus[name] = {
         status: 'On Duty',
         updatedAt: getTimeToMinute(),
         timestamp: Date.now()
       };
-      await redis.set('studentStatus', studentStatus);
+      cache.studentStatus = data.studentStatus;
+      await redis.set('studentStatus', data.studentStatus);
       await broadcastSSE({ action: 'UPDATE_ALL' });
     }
   }
@@ -89,27 +108,22 @@ app.post('/api/subscribe', async (req, res) => {
 // 3. 派遣 API
 app.post('/api/dispatch', async (req, res) => {
   const { type, location, detail } = req.body;
-  if (!type || !location) {
-    return res.status(400).json({ success: false, error: 'Type and location are required.' });
-  }
+  if (!type || !location) return res.status(400).json({ success: false, error: 'Type/location required.' });
 
   const nowStr = getTimeToMinute();
   const mission = {
     id: Date.now(),
-    type,
-    location,
-    detail: detail || '',
+    type, location, detail: detail || '',
     status: '派遣中',
-    createdAt: nowStr,
-    closedAt: null,
-    responseLogs: [],
-    chatMessages: []
+    createdAt: nowStr, closedAt: null,
+    responseLogs: [], chatMessages: []
   };
 
-  let activeMissions = (await redis.get('activeMissions')) || [];
-  activeMissions.unshift(mission);
-  await redis.set('activeMissions', activeMissions);
-
+  const data = await getSystemData();
+  data.activeMissions.unshift(mission);
+  cache.activeMissions = data.activeMissions;
+  
+  await redis.set('activeMissions', data.activeMissions);
   await broadcastSSE({ action: 'UPDATE_ALL' });
 
   const payload = JSON.stringify({
@@ -118,22 +132,17 @@ app.post('/api/dispatch', async (req, res) => {
     url: '/student.html'
   });
 
-  const subscriptions = (await redis.get('subscriptions')) || [];
-  const studentStatus = (await redis.get('studentStatus')) || {};
-
-  const targetSubscriptions = subscriptions.filter(sub => {
-    const statusObj = studentStatus[sub.name];
+  const targetSubscriptions = data.subscriptions.filter(sub => {
+    const statusObj = data.studentStatus[sub.name];
     return !statusObj || statusObj.status !== 'Off Duty';
   });
 
   Promise.all(
     targetSubscriptions.map(sub =>
       webpush.sendNotification(sub, payload).catch(async err => {
-        console.error('Push Error:', err);
         if (err.statusCode === 404 || err.statusCode === 410) {
-          let currentSubs = (await redis.get('subscriptions')) || [];
-          currentSubs = currentSubs.filter(s => s.endpoint !== sub.endpoint);
-          await redis.set('subscriptions', currentSubs);
+          cache.subscriptions = cache.subscriptions.filter(s => s.endpoint !== sub.endpoint);
+          await redis.set('subscriptions', cache.subscriptions);
         }
       })
     )
@@ -142,139 +151,97 @@ app.post('/api/dispatch', async (req, res) => {
   res.json({ success: true, mission });
 });
 
-// 4. 狀態與訊息傳送 API
+// 4. 狀態與訊息 API (💡 關鍵優化：狀態沒變時不寫入 Redis)
 app.post('/api/student/status', async (req, res) => {
   const { name, status, missionId, reportText } = req.body;
-  if (!name || !status) {
-    return res.status(400).json({ success: false, error: 'Name and status are required.' });
-  }
+  if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
 
   const nowStr = getTimeToMinute();
-  let activeMissions = (await redis.get('activeMissions')) || [];
-  let studentStatus = (await redis.get('studentStatus')) || {};
+  const data = await getSystemData();
+  let hasChanged = false;
 
   if (status === '現場訊息') {
     if (missionId) {
-      const targetMission = activeMissions.find(m => m.id === Number(missionId));
+      const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
-        targetMission.chatMessages.push({
-          sender: name,
-          role: 'student',
-          text: reportText || '',
-          time: nowStr
-        });
-        await redis.set('activeMissions', activeMissions);
+        targetMission.chatMessages.push({ sender: name, role: 'student', text: reportText || '', time: nowStr });
+        await redis.set('activeMissions', data.activeMissions);
+        hasChanged = true;
       }
     }
   } else {
-    studentStatus[name] = { 
-      status: (status === 'Off Duty') ? 'Off Duty' : 'On Duty', 
-      updatedAt: nowStr,
-      timestamp: Date.now() 
-    };
-    await redis.set('studentStatus', studentStatus);
+    const newStatus = (status === 'Off Duty') ? 'Off Duty' : 'On Duty';
+    const currentObj = data.studentStatus[name];
+
+    // 只有在狀態改變時才寫入 Redis；如果本來就是 On Duty (心跳包)，直接跳過寫入！
+    if (!currentObj || currentObj.status !== newStatus) {
+      data.studentStatus[name] = { status: newStatus, updatedAt: nowStr, timestamp: Date.now() };
+      cache.studentStatus = data.studentStatus;
+      await redis.set('studentStatus', data.studentStatus);
+      hasChanged = true;
+    }
 
     if (missionId) {
-      const targetMission = activeMissions.find(m => m.id === Number(missionId));
+      const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
-        targetMission.responseLogs.push({
-          id: Date.now(),
-          name,
-          status,
-          time: nowStr
-        });
-        if (status === '已接案' && targetMission.status === '派遣中') {
-          targetMission.status = '已接案';
-        } else if (status === '已到場') {
-          targetMission.status = '已到場';
-        }
-        await redis.set('activeMissions', activeMissions);
+        targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
+        if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
+        else if (status === '已到場') targetMission.status = '已到場';
+        await redis.set('activeMissions', data.activeMissions);
+        hasChanged = true;
       }
     }
   }
 
-  await broadcastSSE({ action: 'UPDATE_ALL' });
+  if (hasChanged) await broadcastSSE({ action: 'UPDATE_ALL' });
   res.json({ success: true });
 });
 
-// 5. 派遣端發送訊息 API
+// 5. 派遣端訊息 API
 app.post('/api/missions/chat', async (req, res) => {
   const { missionId, message } = req.body;
-  const nowStr = getTimeToMinute();
-
-  let activeMissions = (await redis.get('activeMissions')) || [];
-  const targetMission = activeMissions.find(m => m.id === Number(missionId));
+  const data = await getSystemData();
+  const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
   if (targetMission && message) {
-    targetMission.chatMessages.push({
-      sender: '派遣端',
-      role: 'admin',
-      text: message,
-      time: nowStr
-    });
-    await redis.set('activeMissions', activeMissions);
+    targetMission.chatMessages.push({ sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
+    await redis.set('activeMissions', data.activeMissions);
     await broadcastSSE({ action: 'UPDATE_ALL' });
   }
-
   res.json({ success: true });
 });
 
-// 6. 單獨結案 API
+// 6~8. 結案與刪除 API
 app.post('/api/missions/close-single', async (req, res) => {
-  const { id } = req.body;
-  let activeMissions = (await redis.get('activeMissions')) || [];
-  const mission = activeMissions.find(m => m.id === id);
+  const data = await getSystemData();
+  const mission = data.activeMissions.find(m => m.id === req.body.id);
   if (mission) {
     mission.status = '已結案';
     mission.closedAt = getTimeToMinute();
-    await redis.set('activeMissions', activeMissions);
+    await redis.set('activeMissions', data.activeMissions);
+    await broadcastSSE({ action: 'UPDATE_ALL' });
   }
-  await broadcastSSE({ action: 'UPDATE_ALL' });
   res.json({ success: true });
 });
 
-// 7. 單獨刪除案件 API
 app.post('/api/missions/delete-single', async (req, res) => {
-  const { id } = req.body;
-  let activeMissions = (await redis.get('activeMissions')) || [];
-  activeMissions = activeMissions.filter(m => m.id !== id);
-  await redis.set('activeMissions', activeMissions);
-
+  const data = await getSystemData();
+  cache.activeMissions = data.activeMissions.filter(m => m.id !== req.body.id);
+  await redis.set('activeMissions', cache.activeMissions);
   await broadcastSSE({ action: 'UPDATE_ALL' });
   res.json({ success: true });
 });
 
-// 8. 清除所有記錄 API
 app.post('/api/missions/clear', async (req, res) => {
+  cache.activeMissions = [];
   await redis.set('activeMissions', []);
   await broadcastSSE({ action: 'UPDATE_ALL' });
   res.json({ success: true });
 });
 
-// 9. 地點管理 API
+// 9. 地點 API
 app.get('/api/locations', async (req, res) => {
-  const customLocations = (await redis.get('customLocations')) || DEFAULT_LOCATIONS;
-  res.json(customLocations);
-});
-
-app.post('/api/locations', async (req, res) => {
-  const { location } = req.body;
-  let customLocations = (await redis.get('customLocations')) || DEFAULT_LOCATIONS;
-  if (location && typeof location === 'string' && !customLocations.includes(location.trim())) {
-    customLocations.push(location.trim());
-    await redis.set('customLocations', customLocations);
-  }
-  await broadcastSSE({ action: 'LOCATION_UPDATE' });
-  res.json(customLocations);
-});
-
-app.delete('/api/locations', async (req, res) => {
-  const { location } = req.body;
-  let customLocations = (await redis.get('customLocations')) || DEFAULT_LOCATIONS;
-  customLocations = customLocations.filter(loc => loc !== location);
-  await redis.set('customLocations', customLocations);
-
-  await broadcastSSE({ action: 'LOCATION_UPDATE' });
-  res.json(customLocations);
+  const data = await getSystemData();
+  res.json(data.customLocations);
 });
 
 // 10. SSE 連線 API
@@ -286,8 +253,9 @@ app.get('/api/stream', async (req, res) => {
   const clientId = Date.now();
   sseClients.push({ id: clientId, res });
 
-  const systemData = await getSystemData();
-  res.write(`data: ${JSON.stringify({ action: 'INIT', ...systemData })}\n\n`);
+  // 強制重新載入最新資料給新開啟的頁面
+  const data = await getSystemData(true);
+  res.write(`data: ${JSON.stringify({ action: 'INIT', ...data })}\n\n`);
 
   req.on('close', () => {
     sseClients = sseClients.filter(client => client.id !== clientId);
@@ -298,26 +266,24 @@ app.get('/api/stream', async (req, res) => {
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
-    let studentStatus = (await redis.get('studentStatus')) || {};
-    delete studentStatus[name];
-    await redis.set('studentStatus', studentStatus);
-
-    let subscriptions = (await redis.get('subscriptions')) || [];
-    subscriptions = subscriptions.filter(sub => sub.name !== name);
-    await redis.set('subscriptions', subscriptions);
+    const data = await getSystemData();
+    delete data.studentStatus[name];
+    cache.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
+    
+    await Promise.all([
+      redis.set('studentStatus', data.studentStatus),
+      redis.set('subscriptions', cache.subscriptions)
+    ]);
 
     await broadcastSSE({ action: 'REMOVE_STUDENT', removedName: name });
-    return res.json({ success: true, studentStatus });
   }
   res.json({ success: true });
 });
 
-// 12. Ping
+// 12. 心跳 Ping
 setInterval(() => {
   sseClients.forEach(client => {
-    try {
-      client.res.write(': ping\n\n');
-    } catch (e) {}
+    try { client.res.write(': ping\n\n'); } catch (e) {}
   });
 }, 45000);
 

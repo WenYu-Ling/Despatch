@@ -130,6 +130,7 @@
       const name = document.getElementById('studentName').value.trim();
       localStorage.setItem('student_name', name);
     }
+    
     setInterval(async () => {
       if (isOnDuty) {
         const name = document.getElementById('studentName').value.trim();
@@ -141,7 +142,7 @@
           }
         }
       }
-    }, 180000);
+    }, 480000); 
 
     function stopVibration() {
       if (navigator.vibrate) navigator.vibrate(0);
