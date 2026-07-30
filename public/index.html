@@ -546,11 +546,20 @@
 
     async function removeStudent(name) {
       if (await customConfirm(`確定要更改成員「${name}」的狀態並從動態牆中移除嗎？`)) {
-        await fetch('/api/student/remove', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name })
-        });
+        try {
+          const res = await fetch('/api/student/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          
+          if (res.ok) {
+            connectSSE();
+          }
+        } catch (err) {
+          console.error('Remove student error:', err);
+          await customAlert('移除成員狀態失敗，請再試一次。');
+        }
       }
     }
   </script>

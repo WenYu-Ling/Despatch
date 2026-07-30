@@ -238,8 +238,9 @@ app.get('/api/stream', (req, res) => {
 // 11. 手動刪除成員 API
 app.post('/api/student/remove', (req, res) => {
   const { name } = req.body;
-  if (name && studentStatus[name]) {
+  if (name) {
     delete studentStatus[name];
+    subscriptions = subscriptions.filter(sub => sub.name !== name);
     broadcastSSE({ 
       action: 'REMOVE_STUDENT', 
       removedName: name, 
@@ -247,7 +248,7 @@ app.post('/api/student/remove', (req, res) => {
       studentStatus 
     });
   }
-  res.json({ success: true });
+  res.json({ success: true, studentStatus });
 });
 
 // 12. Ping

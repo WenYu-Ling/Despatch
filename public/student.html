@@ -441,17 +441,26 @@
       };
     }
 
-    document.addEventListener('visibilitychange', () => {
+    document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'visible' && isOnDuty) {
-        connectSSE();
-        reportStatus('On Duty');
+        const myName = document.getElementById('studentName').value.trim();
+        
+        try {
+          const res = await fetch('/api/locations'); // 簡單測試連線
+          if (res.ok) {
+            await reportStatus('On Duty');
+            connectSSE();
+          }
+        } catch(e) {
+          connectSSE();
+        }
       }
     });
 
-    window.addEventListener('focus', () => {
+    window.addEventListener('focus', async () => {
       if (isOnDuty) {
+        await reportStatus('On Duty');
         connectSSE();
-        reportStatus('On Duty');
       }
     });
 
@@ -463,12 +472,15 @@
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
-      document.getElementById('studentName').value = localStorage.getItem('student_name') || '';
+      const savedName = localStorage.getItem('student_name') || '';
+      document.getElementById('studentName').value = savedName;
       
       const savedDuty = localStorage.getItem('is_on_duty');
-      if (savedDuty === 'true') {
+      if (savedDuty === 'true' && savedName) {
         isOnDuty = true;
         updateDutyUI();
+        
+        // 先回報狀態並建立連線
         await reportStatus('On Duty');
         connectSSE();
         setupWebPush().catch(err => console.log('Push skipped:', err));
