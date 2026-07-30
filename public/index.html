@@ -32,27 +32,11 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="lg:col-span-2 space-y-6">
-      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
-        <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">1. 選擇案件類型</h2>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <button onclick="dispatch('內科派遣')" class="p-4 bg-blue-600 hover:bg-blue-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
-            內科派遣
-          </button>
-          <button onclick="dispatch('外科/創傷')" class="p-4 bg-orange-600 hover:bg-orange-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
-            外科/創傷
-          </button>
-          <button onclick="dispatch('OHCA 派遣')" class="p-4 bg-red-600 hover:bg-red-500 font-extrabold text-xl rounded-xl shadow-lg active:scale-95 transition border-2 border-red-300">
-            OHCA 派遣
-          </button>
-          <button onclick="dispatch('全員緊急召集')" class="p-4 bg-purple-600 hover:bg-purple-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
-            全員召集
-          </button>
-        </div>
-      </div>
 
+      <!-- 1. 選擇或輸入案件地點 (原步驟 2) -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm font-bold text-gray-400 tracking-wider">2. 選擇或輸入案件地點</h2>
+          <h2 class="text-sm font-bold text-gray-400 tracking-wider">1. 選擇或輸入案件地點</h2>
           <div class="space-x-3 text-xs">
             <button id="toggleEditBtn" onclick="toggleEditMode()" class="text-amber-400 hover:underline font-bold">編輯地點</button>
             <button onclick="addLocation()" class="text-blue-400 hover:underline font-bold">新增快捷地點</button>
@@ -70,6 +54,25 @@
             <label class="text-xs text-gray-400 block mb-1">詳細補充 (例如：108教室)</label>
             <input id="locationDetail" type="text" placeholder="補充樓層或特徵..." class="w-full bg-gray-900 border border-gray-700 p-3 rounded-lg text-white focus:outline-none focus:border-blue-500">
           </div>
+        </div>
+      </div>
+
+      <!-- 2. 選擇案件類型 (原步驟 1) -->
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">2. 選擇案件類型 (點擊按鈕即刻派遣)</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <button onclick="dispatch('內科派遣')" class="p-4 bg-blue-600 hover:bg-blue-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            內科派遣
+          </button>
+          <button onclick="dispatch('外科/創傷')" class="p-4 bg-orange-600 hover:bg-orange-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            外科/創傷
+          </button>
+          <button onclick="dispatch('OHCA 派遣')" class="p-4 bg-red-600 hover:bg-red-500 font-extrabold text-xl rounded-xl shadow-lg active:scale-95 transition border-2 border-red-300">
+            OHCA 派遣
+          </button>
+          <button onclick="dispatch('全員緊急召集')" class="p-4 bg-purple-600 hover:bg-purple-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+            全員召集
+          </button>
         </div>
       </div>
 
@@ -299,8 +302,12 @@
     }
 
     async function dispatch(type) {
-      const location = document.getElementById('selectedLocation').value.trim();
-      const detail = document.getElementById('locationDetail').value.trim();
+      const locationInput = document.getElementById('selectedLocation');
+      const detailInput = document.getElementById('locationDetail');
+      
+      const location = locationInput.value.trim();
+      const detail = detailInput.value.trim();
+
       if (!location) return await customAlert('請輸入或選擇案件地點！');
 
       const res = await fetch('/api/dispatch', {
@@ -309,7 +316,10 @@
         body: JSON.stringify({ type, location, detail })
       });
 
-      document.getElementById('locationDetail').value = '';
+      // 派遣完成後一併清空地點與補充說明框
+      locationInput.value = '';
+      detailInput.value = '';
+
       connectSSE();
     }
 
@@ -381,6 +391,8 @@
 
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
+        
+        // 判斷「所有曾參與該案件（接案或到場）的成員」，最新狀態是否皆為已離場
         const logs = m.responseLogs || [];
         const studentLatestStatus = {};
         
@@ -390,13 +402,14 @@
 
         const participants = Object.keys(studentLatestStatus);
         const hasParticipants = participants.length > 0;
-        
         const isAllLeft = hasParticipants && participants.every(name => studentLatestStatus[name] === '已離場');
 
+        // 卡片背景：結案 或 所有人已離場 時，均變更為暗色/結案風格
         const cardBgClass = (isClosed || isAllLeft)
           ? 'bg-gray-800/60 border-gray-700' 
           : 'bg-red-950/40 border-red-700/60';
 
+        // 右上角狀態文字與標籤樣式
         let displayMissionStatus = m.status;
         let badgeClass = 'bg-red-600/30 text-red-300 border border-red-500';
 
@@ -404,6 +417,7 @@
           badgeClass = 'bg-gray-700 text-gray-400';
           displayMissionStatus = '已結案';
         } else if (isAllLeft) {
+          // 已離場：保持亮眼綠色標籤，文字不變灰
           badgeClass = 'bg-green-900/80 text-green-300 border border-green-500 font-bold';
           displayMissionStatus = '已離場';
         }
@@ -516,6 +530,7 @@
         `;
       }).join('');
 
+      // 自動將對話視窗與動態紀錄視窗捲動至最底部
       document.querySelectorAll('.chat-scroll-box').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
@@ -524,6 +539,7 @@
         box.scrollTop = box.scrollHeight;
       });
 
+      // 畫面重繪後保持原輸入框焦點
       if (activeFocusedInputId) {
         const focusedEl = document.getElementById(activeFocusedInputId);
         if (focusedEl) focusedEl.focus();
