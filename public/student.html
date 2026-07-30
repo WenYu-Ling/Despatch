@@ -160,8 +160,24 @@
     }
 
     async function toggleDuty() {
-  const name = document.getElementById('studentName').value.trim();
-  if (!name) return await customAlert('請先輸入姓名！');
+      const name = document.getElementById('studentName').value.trim();
+      if (!name) return await customAlert('請先輸入姓名！');
+
+      isOnDuty = !isOnDuty;
+      lastUserActionTime = Date.now(); 
+      localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
+      updateDutyUI();
+
+      if (isOnDuty) {
+        await reportStatus('On Duty');
+        connectSSE();
+
+        setupWebPush().catch(err => console.error('WebPush init error:', err));
+      } else {
+        await reportStatus('Off Duty');
+        await forceOffDuty();
+      }
+    }
 
   isOnDuty = !isOnDuty;
   lastUserActionTime = Date.now(); // 🆕 記錄點擊時間點
@@ -224,7 +240,7 @@
       }
     }
 
-async function setupWebPush() {
+    async function setupWebPush() {
       const name = document.getElementById('studentName').value.trim();
       if (!name) return;
 
@@ -249,7 +265,7 @@ async function setupWebPush() {
             });
           }
         } catch (err) {
-          console.error('Web Push setup failed:', err);
+          console.log('Web Push 註冊未完成或不受支援 (不影響上線狀態):', err);
         }
       }
     }
