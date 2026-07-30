@@ -170,6 +170,16 @@
       evtSource.onmessage = (e) => {
         const data = JSON.parse(e.data);
         const myName = document.getElementById('studentName').value.trim();
+
+        if (data.action === 'REMOVE_STUDENT' && data.removedName === myName) {
+          isOnDuty = false;
+          localStorage.setItem('is_on_duty', 'false');
+          stopVibration();
+          updateDutyUI();
+          if (evtSource) evtSource.close();
+          alert('您已被派遣端手動切換為離線狀態 (Off Duty)');
+          return;
+        }
         
         const activeMissions = (data.activeMissions || []).filter(m => {
           if (m.status === '已結案') return false;
@@ -243,7 +253,7 @@
                     
                     ${isAccepted ? `
                       <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-lg rounded-xl shadow transition">
-                      我已到達現場 (Arrived)
+                      我已到達現場
                       </button>
                     ` : `
                       <div class="bg-green-800/80 text-green-200 text-xs font-bold p-2 rounded text-center">
@@ -290,7 +300,6 @@
           standbyBox.classList.remove('hidden');
         }
       };
-
 
       evtSource.onerror = () => {
         if (evtSource) {

@@ -210,36 +210,20 @@ app.get('/api/stream', (req, res) => {
   });
 });
 
-// 11. 手動刪除不線上成員 API
+// 11. 手動刪除成員 API
 app.post('/api/student/remove', (req, res) => {
   const { name } = req.body;
   if (name && studentStatus[name]) {
     delete studentStatus[name];
-    broadcastSSE({ action: 'UPDATE_ALL', activeMissions, studentStatus });
+    broadcastSSE({ 
+      action: 'REMOVE_STUDENT', 
+      removedName: name, 
+      activeMissions, 
+      studentStatus 
+    });
   }
   res.json({ success: true });
 });
-
-// 12. 超過 10 分鐘未更新自動刪除成員
-setInterval(() => {
-  const now = Date.now();
-  let hasChanges = false;
-
-  for (const [name, info] of Object.entries(studentStatus)) {
-    if (!info.timestamp) {
-      info.timestamp = now;
-      continue;
-    }
-    if (now - info.timestamp > 10 * 60 * 1000) {
-      delete studentStatus[name];
-      hasChanges = true;
-    }
-  }
-
-  if (hasChanges) {
-    broadcastSSE({ action: 'UPDATE_ALL', activeMissions, studentStatus });
-  }
-}, 60 * 1000);
 
 // 13. Ping
 setInterval(() => {
