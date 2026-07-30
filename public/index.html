@@ -95,7 +95,6 @@
     let isEditMode = false;
     let evtSource = null;
 
-    // 🆕 自動連線與恢復機制
     function connectSSE() {
       if (evtSource) {
         evtSource.close();
@@ -194,9 +193,8 @@
   if (!input) return;
 
   const message = input.value.trim();
-  if (!message) return; // 空白字串不發送
+  if (!message) return;
 
-  // 暫時清空並將輸入框先失焦，避免重複觸發 Enter
   input.value = '';
 
   try {
@@ -209,12 +207,12 @@
     const result = await res.json();
     if (!result.success) {
       alert('訊息發送失敗，請再試一次');
-      input.value = message; // 若失敗則還原輸入內容
+      input.value = message;
     }
   } catch (err) {
     console.error('Send message error:', err);
     alert('網路連線異常，訊息發送失敗');
-    input.value = message; // 若發送失敗還原內容，防止訊息遺失
+    input.value = message;
   }
 }
 
@@ -349,9 +347,9 @@
 
                 ${!isClosed ? `
                   <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
-                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送補充指令/訊息給成員 (按 Enter 送出)..." onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
+                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送補訊息給成員..." onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
                     <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
-                      發送指令
+                      發送
                     </button>
                   </div>
                 ` : ''}

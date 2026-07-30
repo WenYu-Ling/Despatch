@@ -6,7 +6,6 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ⚠️ 保留您設定好的 VAPID Key
 const publicVapidKey = 'BINKDYoRVfyrjbpsxugYEJF35OvBgGBxHD9hEnrFrB45xC_Jp0jRC8jNrqaut_bx2uWEtrfySqZ8cQyUG6rYxZk';
 const privateVapidKey = 'i5bcWTflgfimEropoXIndRm46rX4KNZeGU0aTSvKUQI';
 
@@ -17,7 +16,7 @@ webpush.setVapidDetails(
 );
 
 let subscriptions = [];
-let activeMissions = []; // 結構: { id, type, location, detail, status, createdAt, closedAt, responseLogs: [], chatMessages: [] }
+let activeMissions = []; 
 let studentStatus = {};
 let customLocations = ['綜合教學大樓', '教穡大樓', '圖資館', '體育館', '操場', '風雨球場', '格致大樓', '電資二館', '工學院', '生資院', '人管院'];
 
@@ -41,7 +40,7 @@ function getTimeToMinute() {
 // 1. VAPID Key API
 app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
-// 2. 訂閱 Push API
+// 2. Push API
 app.post('/api/subscribe', (req, res) => {
   const subscription = req.body;
   if (!subscriptions.find(sub => sub.endpoint === subscription.endpoint)) {
@@ -50,7 +49,7 @@ app.post('/api/subscribe', (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 3. 發起派遣 API
+// 3. 派遣 API
 app.post('/api/dispatch', (req, res) => {
   const { type, location, detail } = req.body;
   const nowStr = getTimeToMinute();
@@ -64,7 +63,7 @@ app.post('/api/dispatch', (req, res) => {
     createdAt: nowStr,
     closedAt: null,
     responseLogs: [],
-    chatMessages: [] // 案件專屬對話紀錄
+    chatMessages: []
   };
 
   activeMissions.unshift(mission);
@@ -86,7 +85,7 @@ app.post('/api/dispatch', (req, res) => {
   res.json({ success: true, mission });
 });
 
-// 4. 隊員狀態與案件訊息傳送 API
+// 4. 狀態與訊息傳送 API
 app.post('/api/student/status', (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   const nowStr = getTimeToMinute();
@@ -104,7 +103,6 @@ app.post('/api/student/status', (req, res) => {
       }
     }
   } else {
-    // 更新隊員個人狀態與時間戳記
     studentStatus[name] = { 
       status: (status === 'Off Duty') ? 'Off Duty' : 'On Duty', 
       updatedAt: nowStr,
@@ -114,17 +112,14 @@ app.post('/api/student/status', (req, res) => {
     if (missionId) {
       const targetMission = activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
-        // 1. 只要有回應，記錄一律推入 responseLogs (這樣所有人接受/到場/拒絕都會被上記錄)
         targetMission.responseLogs.push({
           id: Date.now(),
           name,
           status,
           time: nowStr
         });
-
-        // 2. 更新案件整體的核心狀態 (只要有人接單或到場，就更新案件的主標籤)
-        if (status === '已接單' && targetMission.status === '派遣中') {
-          targetMission.status = '已接單';
+        if (status === '已接案' && targetMission.status === '派遣中') {
+          targetMission.status = '已接案';
         } else if (status === '已到場') {
           targetMission.status = '已到場';
         }
@@ -136,7 +131,7 @@ app.post('/api/student/status', (req, res) => {
   res.json({ success: true });
 });
 
-// 5. 衛保組發送案件補充訊息/指令 API
+// 5. 派遣端發送訊息 API
 app.post('/api/missions/chat', (req, res) => {
   const { missionId, message } = req.body;
   const nowStr = getTimeToMinute();
@@ -225,7 +220,7 @@ app.post('/api/student/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// 12. 超過 10 分鐘未更新自動刪除成員機制
+// 12. 超過 10 分鐘未更新自動刪除成員
 setInterval(() => {
   const now = Date.now();
   let hasChanges = false;
@@ -235,8 +230,6 @@ setInterval(() => {
       info.timestamp = now;
       continue;
     }
-
-    // 10 分鐘 = 600,000 毫秒
     if (now - info.timestamp > 10 * 60 * 1000) {
       delete studentStatus[name];
       hasChanges = true;
@@ -248,7 +241,7 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
-// 13. 每 15 秒向所有 SSE 用戶端發送 Ping，保持連線不被防火牆或 Vercel 強制中斷
+// 13. Ping
 setInterval(() => {
   sseClients.forEach(client => client.res.write(': ping\n\n'));
 }, 45000);
