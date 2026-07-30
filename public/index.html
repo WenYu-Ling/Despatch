@@ -226,41 +226,32 @@
       evtSource = new EventSource('/api/stream');
 
       evtSource.onmessage = (e) => {
-        const data = JSON.parse(e.data);
-        
-        if (data.customLocations && !isEditMode) {
-          renderLocations(data.customLocations);
+        try {
+          const data = JSON.parse(e.data);
+          
+          if (data.customLocations && !isEditMode) {
+            renderLocations(data.customLocations);
+          }
+          
+          // ⚡ 修正：只要收到廣播，不論欄位組合為何，均自動更新成員與案件視窗！
+          if (data.studentStatus) {
+            renderStudents(data.studentStatus);
+          }
+          if (data.activeMissions) {
+            renderMissions(data.activeMissions);
+          }
+        } catch (err) {
+          console.error('SSE 資料解析錯誤:', err);
         }
-        
-        if (data.studentStatus) renderStudents(data.studentStatus);
-        if (data.activeMissions) renderMissions(data.activeMissions);
       };
 
+      // ⚡ 修正：發生錯誤時自動 2 秒後重連
       evtSource.onerror = () => {
         if (evtSource) {
           evtSource.close();
           setTimeout(connectSSE, 2000);
         }
       };
-    }
-
-    connectSSE();
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') connectSSE();
-    });
-
-    function toggleEditMode() {
-      isEditMode = !isEditMode;
-      const wall = document.getElementById('locationWall');
-      const btn = document.getElementById('toggleEditBtn');
-      if (isEditMode) {
-        wall.classList.add('edit-mode');
-        btn.innerText = '完成編輯';
-      } else {
-        wall.classList.remove('edit-mode');
-        btn.innerText = '編輯地點';
-      }
     }
 
     function renderLocations(locations) {
@@ -384,7 +375,7 @@
 
     function renderMissions(missions) {
       const log = document.getElementById('missionLog');
-      if (missions.length === 0) {
+      if (!missions || missions.length === 0) {
         log.innerHTML = `<p class="text-gray-500 text-sm">目前無處理中案件</p>`;
         return;
       }
@@ -392,7 +383,6 @@
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
         
-        // 判斷「所有曾參與該案件（接案或到場）的成員」，最新狀態是否皆為已離場
         const logs = m.responseLogs || [];
         const studentLatestStatus = {};
         
@@ -404,12 +394,12 @@
         const hasParticipants = participants.length > 0;
         const isAllLeft = hasParticipants && participants.every(name => studentLatestStatus[name] === '已離場');
 
-        // 卡片背景：結案 或 所有人已離場 時，均變更為暗色/結案風格
+        // 卡片背景
         const cardBgClass = (isClosed || isAllLeft)
           ? 'bg-gray-800/60 border-gray-700' 
           : 'bg-red-950/40 border-red-700/60';
 
-        // 右上角狀態文字與標籤樣式
+        // 右上角案件總體狀態標籤
         let displayMissionStatus = m.status;
         let badgeClass = 'bg-red-600/30 text-red-300 border border-red-500';
 
@@ -417,9 +407,16 @@
           badgeClass = 'bg-gray-700 text-gray-400';
           displayMissionStatus = '已結案';
         } else if (isAllLeft) {
-          // 已離場：保持亮眼綠色標籤，文字不變灰
           badgeClass = 'bg-green-900/80 text-green-300 border border-green-500 font-bold';
           displayMissionStatus = '已離場';
+        } else if (m.status === '已接案') {
+          // ⚡ 新增：接案時呈現亮藍色顯眼標籤
+          badgeClass = 'bg-blue-600 text-white font-extrabold border border-blue-400 animate-pulse';
+          displayMissionStatus = '已接案 (趕往現場中)';
+        } else if (m.status === '已到場') {
+          // ⚡ 新增：到場時呈現亮黃色顯眼標籤
+          badgeClass = 'bg-yellow-500 text-gray-900 font-extrabold border border-yellow-300';
+          displayMissionStatus = '隊員已到場';
         }
 
         const logsHtml = logs.length > 0
@@ -427,21 +424,21 @@
               let badgeStyle = 'bg-blue-900/60 text-blue-300';
               let displayStatus = l.status;
 
-              if (l.status === '已到場') {
-                badgeStyle = 'bg-yellow-900/60 text-yellow-300';
+              if (l.status === '已接案') {
+                badgeStyle = 'bg-blue-600 text-white font-bold';
+              } else if (l.status === '已到場') {
+                badgeStyle = 'bg-yellow-500 text-gray-900 font-bold';
               } else if (l.status === '已拒絕') {
                 badgeStyle = 'bg-red-900 text-red-200 border border-red-500 font-bold';
-                displayStatus = '已拒絕';
               } else if (l.status === '已離場') {
                 badgeStyle = 'bg-green-900/80 text-green-200 border border-green-600 font-bold';
-                displayStatus = '已離場';
               }
 
               return `
                 <div class="flex justify-between items-center text-xs text-gray-300 py-1 border-b border-gray-700/50">
                   <span>👤 <strong class="text-gray-100">${l.name}</strong></span>
-                  <span class="px-2.5 py-0.5 rounded ${badgeStyle}">${displayStatus}</span>
-                  <span class="text-gray-400 font-mono">${l.time}</span>
+                  <span class="px-2 py-0.5 rounded text-[11px] ${badgeStyle}">${displayStatus}</span>
+                  <span class="text-gray-400 font-mono text-[10px]">${l.time}</span>
                 </div>
               `;
             }).join('')
@@ -467,7 +464,7 @@
           : `<p class="text-xs text-gray-500 py-1">對話頻道暫無訊息</p>`;
 
         return `
-          <div class="p-5 ${cardBgClass} border rounded-xl shadow-lg space-y-4">
+          <div class="p-5 ${cardBgClass} border rounded-xl shadow-lg space-y-4 transition-all">
             <div class="flex justify-between items-start">
               <div>
                 <span class="text-xs font-bold ${isClosed ? 'bg-gray-700 text-gray-300' : 'bg-red-800 text-red-200'} px-2.5 py-1 rounded-md">${m.type}</span>
@@ -530,7 +527,6 @@
         `;
       }).join('');
 
-      // 自動將對話視窗與動態紀錄視窗捲動至最底部
       document.querySelectorAll('.chat-scroll-box').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
@@ -539,7 +535,6 @@
         box.scrollTop = box.scrollHeight;
       });
 
-      // 畫面重繪後保持原輸入框焦點
       if (activeFocusedInputId) {
         const focusedEl = document.getElementById(activeFocusedInputId);
         if (focusedEl) focusedEl.focus();
