@@ -86,7 +86,7 @@ app.post('/api/subscribe', async (req, res) => {
       subscriptions = subscriptions.filter(sub => sub.name !== name && sub.endpoint !== subscription.endpoint);
       subscriptions.push({ name, ...subscription });
       cache.subscriptions = subscriptions;
-      await redis.set('subscriptions', subscriptions); // 只有 Endpoint 改變才寫入 Redis
+      await redis.set('subscriptions', subscriptions);
     }
 
     if (!data.studentStatus[name] || data.studentStatus[name].status === 'Off Duty') {
@@ -103,7 +103,7 @@ app.post('/api/subscribe', async (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 3. 派遣 API
+// 3. 派遣 API (只向 On Duty 成員發送 Push 推播)
 app.post('/api/dispatch', async (req, res) => {
   const { type, location, detail } = req.body;
   if (!type || !location) return res.status(400).json({ success: false, error: 'Type/location required.' });
@@ -130,9 +130,10 @@ app.post('/api/dispatch', async (req, res) => {
     url: '/student.html'
   });
 
+  // 僅針對目前「On Duty」的成員發送 Web Push 通知
   const targetSubscriptions = data.subscriptions.filter(sub => {
     const statusObj = data.studentStatus[sub.name];
-    return !statusObj || statusObj.status !== 'Off Duty';
+    return statusObj && statusObj.status !== 'Off Duty';
   });
 
   Promise.all(
@@ -149,7 +150,7 @@ app.post('/api/dispatch', async (req, res) => {
   res.json({ success: true, mission });
 });
 
-// 4. 狀態與訊息 API (💡 關鍵優化：狀態沒變時不寫入 Redis)
+// 4. 狀態與訊息 API (改為 Off Duty 時自動移除其 Push 訂閱)
 app.post('/api/student/status', async (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
@@ -171,7 +172,13 @@ app.post('/api/student/status', async (req, res) => {
     const newStatus = (status === 'Off Duty') ? 'Off Duty' : 'On Duty';
     const currentObj = data.studentStatus[name];
 
-    // 只有在狀態改變時才寫入 Redis；如果本來就是 On Duty (心跳包)，直接跳過寫入！
+    // 如果成員改為 Off Duty，同時清理其 Push 訂閱
+    if (newStatus === 'Off Duty') {
+      data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
+      cache.subscriptions = data.subscriptions;
+      await redis.set('subscriptions', data.subscriptions);
+    }
+
     if (!currentObj || currentObj.status !== newStatus) {
       data.studentStatus[name] = { status: newStatus, updatedAt: nowStr, timestamp: Date.now() };
       cache.studentStatus = data.studentStatus;
@@ -251,7 +258,6 @@ app.get('/api/stream', async (req, res) => {
   const clientId = Date.now();
   sseClients.push({ id: clientId, res });
 
-  // 強制重新載入最新資料給新開啟的頁面
   const data = await getSystemData(true);
   res.write(`data: ${JSON.stringify({ action: 'INIT', ...data })}\n\n`);
 
@@ -260,43 +266,33 @@ app.get('/api/stream', async (req, res) => {
   });
 });
 
-// 11. 手動刪除/關閉成員 API
-// 手動刪除/關閉成員 API
+// 11. 手動刪除/關閉成員 API (確實區分離線刪除與強制切換 Off)
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
     const data = await getSystemData();
     
     if (data.studentStatus[name]) {
-      // ⚡ 關鍵修復：
-      // 如果對方已經是 Off Duty，按 ✕ 就是要「完全剔除名單」
       if (data.studentStatus[name].status === 'Off Duty') {
-        delete data.studentStatus[name]; // 徹底從物件中刪除 Key
+        // 已是 Off Duty 狀態，徹底刪除 Key 並移除 Push 訂閱
+        delete data.studentStatus[name];
+        data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
       } else {
-        // 如果對方是 On Duty，按 ✕ 是強制把他切換成 Off Duty
+        // 原本是 On Duty，強行切換成 Off Duty 並移除 Push 訂閱
         data.studentStatus[name].status = 'Off Duty';
         data.studentStatus[name].updatedAt = getTimeToMinute();
+        data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
       }
     }
     
-    // 尋找該成員的 Web Push 訂閱資料並發送通知
-    const targetSub = data.subscriptions.find(sub => sub.name === name);
-    if (targetSub) {
-      const payload = JSON.stringify({
-        title: '【勤務狀態變更】',
-        body: '派遣端已手動更新您的勤務狀態。',
-        url: '/student.html'
-      });
-      webpush.sendNotification(targetSub, payload).catch(err => console.log('Push error:', err));
-    }
+    cache.studentStatus = data.studentStatus;
+    cache.subscriptions = data.subscriptions;
 
-    // 更新 Redis 與 快取
     await Promise.all([
       redis.set('studentStatus', data.studentStatus),
       redis.set('subscriptions', data.subscriptions)
     ]);
 
-    // ⚡ 發送 SSE 廣播給所有派遣端與手機，同步更新動態牆
     await broadcastSSE({ 
       action: 'REMOVE_STUDENT', 
       removedName: name,
