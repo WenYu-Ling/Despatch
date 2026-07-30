@@ -553,8 +553,9 @@
             body: JSON.stringify({ name })
           });
           
-          if (res.ok) {
-            connectSSE();
+          const result = await res.json();
+          if (result.success && result.studentStatus) {
+            renderStudents(result.studentStatus);
           }
         } catch (err) {
           console.error('Remove student error:', err);

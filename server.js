@@ -240,7 +240,9 @@ app.post('/api/student/remove', (req, res) => {
   const { name } = req.body;
   if (name) {
     delete studentStatus[name];
+    
     subscriptions = subscriptions.filter(sub => sub.name !== name);
+
     broadcastSSE({ 
       action: 'REMOVE_STUDENT', 
       removedName: name, 
