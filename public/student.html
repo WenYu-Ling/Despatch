@@ -11,35 +11,38 @@
     body { user-select: none; -webkit-tap-highlight-color: transparent; }
   </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col justify-between">
+<!-- ⚡ 1. 頁面主體：使用 h-[100dvh] 讓手機完全不需手動捲動，一頁填滿螢幕 -->
+<body class="bg-gray-900 text-white h-[100dvh] max-h-[100dvh] p-4 flex flex-col justify-between overflow-hidden">
 
-  <div>
-    <!-- 頂部狀態列 -->
-    <div class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-4 border border-gray-700 shadow-lg">
-      <div>
-        <span class="text-xs text-gray-400 block">成員</span>
-        <input id="studentName" type="text" placeholder="輸入姓名" class="bg-transparent font-bold text-lg text-white border-b border-gray-600 focus:outline-none focus:border-red-500 w-32" onchange="saveName()">
-      </div>
-      <button id="dutyBtn" onclick="toggleDuty()" class="px-6 py-3 rounded-lg font-bold text-sm bg-gray-700 text-gray-300">
-        Off Duty (離線)
-      </button>
+  <!-- 頂部狀態列 (固定高度) -->
+  <div class="flex-none flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-3 border border-gray-700 shadow-lg">
+    <div>
+      <span class="text-xs text-gray-400 block">成員</span>
+      <input id="studentName" type="text" placeholder="輸入姓名" class="bg-transparent font-bold text-lg text-white border-b border-gray-600 focus:outline-none focus:border-red-500 w-32" onchange="saveName()">
     </div>
+    <button id="dutyBtn" onclick="toggleDuty()" class="px-5 py-2.5 rounded-lg font-bold text-sm bg-gray-700 text-gray-300">
+      Off Duty (離線)
+    </button>
+  </div>
 
-    <!-- 任務卡片容器 -->
-    <div id="missionContainer" class="space-y-4"></div>
+  <!-- 中間主要內容區 (flex-1 彈性自適應與滾動) -->
+  <div class="flex-1 flex flex-col min-h-0 justify-center">
 
-    <!-- 待命中 / 離線 畫面 (豐富化視覺內容，非純空白) -->
-    <div id="standbyBox" class="bg-gray-800/60 border border-gray-700 p-6 rounded-2xl my-6 space-y-4 shadow-xl">
+    <!-- 任務卡片容器 (有案件時可滾動) -->
+    <div id="missionContainer" class="space-y-4 overflow-y-auto max-h-full"></div>
+
+    <!-- 待命中 / 離線 畫面 (無案件時自動精簡自適應) -->
+    <div id="standbyBox" class="bg-gray-800/60 border border-gray-700 p-5 rounded-2xl my-auto space-y-3 shadow-xl flex flex-col justify-center">
       <div class="flex items-center justify-center space-x-3">
         <div id="statusDot" class="w-3.5 h-3.5 rounded-full bg-gray-500"></div>
-        <span id="standbyTitle" class="text-lg font-extrabold text-gray-300">尚未上線</span>
+        <span id="standbyTitle" class="text-base font-extrabold text-gray-300">尚未上線</span>
       </div>
       <p id="standbyText" class="text-gray-400 text-xs text-center leading-relaxed">
         請先輸入姓名並切換為 On Duty
       </p>
 
-      <!-- 待命提示卡片 (連線成功時顯示，確保畫面內容豐滿) -->
-      <div id="dutyGuideBox" class="hidden pt-3 border-t border-gray-700/60 text-left space-y-2.5 text-xs text-gray-300">
+      <!-- 待命提示卡片 -->
+      <div id="dutyGuideBox" class="hidden pt-2.5 border-t border-gray-700/60 text-left space-y-2 text-[11px] text-gray-300">
         <div class="flex items-center space-x-2 text-yellow-400 font-bold">
           <span>⚡</span>
           <span>即時勤務注意事項</span>
@@ -47,15 +50,21 @@
         <ul class="list-disc list-inside space-y-1 text-gray-400">
           <li>保持網路連線與手機通知開啟。</li>
           <li>收到急救派遣時，手機將發出推播並即時顯示案件卡片。</li>
-          <li>接案後請迅速移動至案件地點，並善用「現場對話」回報狀況。</li>
+          <li>接案後請迅速移動至現場，善用「現場對話」回報狀況。</li>
         </ul>
       </div>
     </div>
+
   </div>
 
-  <p class="text-center text-xs text-gray-500 py-2">校園急救即時派遣系統 • PWA Mobile</p>
+  <!-- 頁尾小字 (固定在螢幕最底部) -->
+  <div class="flex-none pt-2">
+    <p class="text-center text-[11px] text-gray-500 border-t border-gray-800/80 pt-2">
+      校園急救即時派遣系統 • PWA Mobile
+    </p>
+  </div>
 
-  <!-- 自訂 UI Modal 彈窗區域 -->
+  <!-- ⚡ 2. 原本的自訂 UI Modal 彈窗區域 (完整保留) -->
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -89,6 +98,7 @@
     </div>
   </div>
 
+</body>
   <script>
     let isOnDuty = false;
     let evtSource = null;
@@ -367,6 +377,7 @@
       if (!isOnDuty || activeMissions.length === 0) {
         container.innerHTML = '';
         standbyBox.classList.remove('hidden');
+        updateDutyUI();
         return;
       }
 
@@ -427,7 +438,6 @@
             <div class="bg-gray-900/90 p-3 rounded-xl border border-gray-700/80 space-y-3">
               <div class="text-xs font-bold text-yellow-400">即時現場對話</div>
               
-              <!-- ⚡ 對話訊息視窗 (帶有 auto-scroll-chat 類別) -->
               <div class="auto-scroll-chat space-y-1.5 max-h-36 overflow-y-auto pr-1">
                 ${chatHtml || '<p class="text-xs text-gray-500">暫無對話紀錄</p>'}
               </div>
@@ -441,7 +451,6 @@
         `;
       }).join('');
 
-      // ⚡ 自動捲動對話訊息欄至最底部
       document.querySelectorAll('.auto-scroll-chat').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
@@ -482,6 +491,8 @@
         await reportStatus('On Duty');
         connectSSE();
         setupWebPush().catch(err => console.log('Push skipped:', err));
+      } else {
+        updateDutyUI();
       }
     });
   </script>
