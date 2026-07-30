@@ -260,22 +260,40 @@ app.get('/api/stream', async (req, res) => {
   });
 });
 
-// 11. 手動刪除成員 API
+// 11. 手動刪除/關閉成員 API
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
     const data = await getSystemData();
-    delete data.studentStatus[name];
-    cache.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
     
+    if (data.studentStatus[name]) {
+      data.studentStatus[name].status = 'Off Duty';
+      data.studentStatus[name].updatedAt = getTimeToMinute();
+    }
+    
+    const targetSub = data.subscriptions.find(sub => sub.name === name);
+    if (targetSub) {
+      const payload = JSON.stringify({
+        title: '【勤務狀態變更】',
+        body: '派遣端已手動將您的狀態切換為 Off Duty (離線)。',
+        url: '/student.html'
+      });
+      
+      webpush.sendNotification(targetSub, payload).catch(err => console.log('Push error:', err));
+    }
+
     await Promise.all([
       redis.set('studentStatus', data.studentStatus),
-      redis.set('subscriptions', cache.subscriptions)
+      redis.set('subscriptions', data.subscriptions)
     ]);
 
-    await broadcastSSE({ action: 'REMOVE_STUDENT', removedName: name });
+    await broadcastSSE({ 
+      action: 'REMOVE_STUDENT', 
+      removedName: name,
+      studentStatus: data.studentStatus
+    });
   }
-  res.json({ success: true });
+  res.json({ success: true, studentStatus: cache.studentStatus });
 });
 
 // 12. 心跳 Ping

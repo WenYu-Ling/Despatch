@@ -350,6 +350,22 @@
       evtSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
+          const myName = document.getElementById('studentName').value.trim();
+
+          // ⚡ 關鍵判定：如果派遣端手動更改的是「我自己」的狀態
+          if (data.action === 'REMOVE_STUDENT' && data.removedName === myName) {
+            forceOffDuty('派遣端已手動將您的勤務狀態切換為 Off Duty (離線)！');
+            return;
+          }
+
+          // 如果收到最新狀態包含我且已被改為 Off Duty
+          if (data.studentStatus && data.studentStatus[myName]) {
+            if (data.studentStatus[myName].status === 'Off Duty' && isOnDuty) {
+              forceOffDuty('您的勤務狀態已被更新為 Off Duty。');
+              return;
+            }
+          }
+
           if (data.activeMissions) renderMissions(data.activeMissions);
         } catch (err) {
           console.error('SSE Error:', err);
