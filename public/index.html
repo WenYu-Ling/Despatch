@@ -534,11 +534,12 @@
       const list = document.getElementById('studentList');
       const keys = Object.keys(students);
       
+      // 只統計在線 (On Duty) 的人數
       const onDutyCount = keys.filter(k => students[k].status !== 'Off Duty').length;
       document.getElementById('onDutyCount').innerText = `${onDutyCount} 人`;
 
       if (keys.length === 0) {
-        list.innerHTML = `<p class="text-gray-500 text-sm pt-2">暫無成員上線</p>`;
+        list.innerHTML = `<p class="text-gray-500 text-sm pt-2">暫無成員記錄</p>`;
         return;
       }
 
@@ -559,7 +560,7 @@
             
             <div class="flex items-center space-x-2">
               <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
-              <button onclick="removeStudent('${name}')" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
+              <button onclick="removeStudent('${name}', ${isOff})" title="${isOff ? '從列表中刪除成員' : '強制切換為 Off Duty'}" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
                 ✕
               </button>
             </div>
@@ -568,8 +569,13 @@
       }).join('');
     }
 
-    async function removeStudent(name) {
-      if (await customConfirm(`確定要更改成員「${name}」的狀態並從動態牆中移除嗎？`)) {
+    async function removeStudent(name, isOff) {
+      // 根據成員當前的狀態，顯示不同的提示文字
+      const confirmText = isOff 
+        ? `確定要將成員「${name}」從動態牆列表中完全刪除嗎？`
+        : `確定要強制將成員「${name}」切換為 Off Duty (離線) 嗎？`;
+
+      if (await customConfirm(confirmText)) {
         try {
           const res = await fetch('/api/student/remove', {
             method: 'POST',
@@ -583,7 +589,7 @@
           }
         } catch (err) {
           console.error('Remove student error:', err);
-          await customAlert('移除成員狀態失敗，請再試一次。');
+          await customAlert('操作失敗，請再試一次。');
         }
       }
     }
