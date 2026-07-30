@@ -1,7 +1,7 @@
 {
   "name": "校園急救派遣系統",
   "short_name": "校園急救派遣",
-  "start_url": ".",
+  "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#ef4444",
@@ -15,6 +15,22 @@
       "src": "/icon/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "成員勤務端",
+      "short_name": "勤務端",
+      "description": "開啟勤務端",
+      "url": "/student.html",
+      "icons": [{ "src": "/icon/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "派遣儀表板",
+      "short_name": "派遣端",
+      "description": "開啟派遣控制台",
+      "url": "/index.html",
+      "icons": [{ "src": "/icon/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
