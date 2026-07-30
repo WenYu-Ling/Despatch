@@ -177,20 +177,29 @@ app.post('/api/missions/clear', (req, res) => {
   res.json({ success: true });
 });
 
+// 修改 broadcastSSE：確保每一次廣播都帶著最新的 customLocations
+function broadcastSSE(data) {
+  // 將目前的 customLocations 預設帶入每次廣播中
+  const payload = { customLocations, ...data };
+  sseClients.forEach(client => client.res.write(`data: ${JSON.stringify(payload)}\n\n`));
+}
+
 // 9. 地點管理 API
 app.get('/api/locations', (req, res) => res.json(customLocations));
+
 app.post('/api/locations', (req, res) => {
   const { location } = req.body;
   if (location && !customLocations.includes(location)) {
     customLocations.push(location);
   }
-  broadcastSSE({ action: 'LOCATION_UPDATE', customLocations });
+  broadcastSSE({ action: 'LOCATION_UPDATE', customLocations, activeMissions, studentStatus });
   res.json(customLocations);
 });
+
 app.delete('/api/locations', (req, res) => {
   const { location } = req.body;
   customLocations = customLocations.filter(loc => loc !== location);
-  broadcastSSE({ action: 'LOCATION_UPDATE', customLocations });
+  broadcastSSE({ action: 'LOCATION_UPDATE', customLocations, activeMissions, studentStatus });
   res.json(customLocations);
 });
 

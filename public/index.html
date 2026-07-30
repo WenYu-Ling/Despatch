@@ -223,7 +223,12 @@
 
       evtSource.onmessage = (e) => {
         const data = JSON.parse(e.data);
-        if (data.customLocations) renderLocations(data.customLocations);
+        
+        // 防跳動機制：只有在「非編輯地點模式」下才自動重繪地點牆，避免使用者正在操作時畫面被刷新蓋掉
+        if (data.customLocations && !isEditMode) {
+          renderLocations(data.customLocations);
+        }
+        
         if (data.studentStatus) renderStudents(data.studentStatus);
         if (data.activeMissions) renderMissions(data.activeMissions);
       };
