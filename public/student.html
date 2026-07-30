@@ -39,6 +39,7 @@
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
+        <span>⚠️</span>
         <span>校園急救派遣系統</span>
       </div>
       <p id="customConfirmMessage" class="text-gray-200 text-sm leading-relaxed"></p>
@@ -56,6 +57,7 @@
   <div id="customAlertModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
+        <span>📢</span>
         <span>校園急救派遣系統</span>
       </div>
       <p id="customAlertMessage" class="text-gray-200 text-sm leading-relaxed"></p>
@@ -71,7 +73,6 @@
     let isOnDuty = false;
     let evtSource = null;
 
-    // 自訂 Modal 通用處理邏輯
     function customConfirm(message) {
       return new Promise((resolve) => {
         const modal = document.getElementById('customConfirmModal');
@@ -138,6 +139,25 @@
       }
     }
 
+    async function forceOffDuty(reasonMessage = null) {
+      isOnDuty = false;
+      localStorage.setItem('is_on_duty', 'false');
+      stopVibration();
+      updateDutyUI();
+      if (evtSource) {
+        evtSource.close();
+        evtSource = null;
+      }
+      const container = document.getElementById('missionContainer');
+      const standbyBox = document.getElementById('standbyBox');
+      container.innerHTML = '';
+      standbyBox.classList.remove('hidden');
+
+      if (reasonMessage) {
+        await customAlert(reasonMessage);
+      }
+    }
+
     async function toggleDuty() {
       const name = document.getElementById('studentName').value.trim();
       if (!name) return await customAlert('請先輸入姓名！');
@@ -151,9 +171,8 @@
         await reportStatus('On Duty');
         connectSSE();
       } else {
-        stopVibration();
         await reportStatus('Off Duty');
-        if (evtSource) evtSource.close();
+        await forceOffDuty();
       }
     }
 
@@ -170,22 +189,22 @@
     }
 
     async function submitReport(missionId) {
-  const input = document.getElementById(`report_input_${missionId}`);
-  if (!input) return;
+      const input = document.getElementById(`report_input_${missionId}`);
+      if (!input) return;
 
-  const text = input.value.trim();
-  if (!text) return await customAlert('請先輸入訊息內容！');
+      const text = input.value.trim();
+      if (!text) return await customAlert('請先輸入訊息內容！');
 
-  input.value = '';
+      input.value = '';
 
-  try {
-    await reportStatus('現場訊息', missionId, text);
-  } catch (e) {
-    console.error('Status report failed:', e);
-    await customAlert('網路連線異常，訊息發送失敗！');
-    input.value = text;
-  }
-}
+      try {
+        await reportStatus('現場訊息', missionId, text);
+      } catch (e) {
+        console.error('Status report failed:', e);
+        await customAlert('網路連線異常，訊息發送失敗！');
+        input.value = text;
+      }
+    }
 
     async function leaveScene(missionId) {
       if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
@@ -245,6 +264,8 @@
     }
 
     function connectSSE() {
+      if (!isOnDuty) return;
+
       if (evtSource) {
         evtSource.close();
       }
@@ -256,13 +277,16 @@
         const myName = document.getElementById('studentName').value.trim();
 
         if (data.action === 'REMOVE_STUDENT' && data.removedName === myName) {
-          isOnDuty = false;
-          localStorage.setItem('is_on_duty', 'false');
-          stopVibration();
-          updateDutyUI();
-          if (evtSource) evtSource.close();
-          await customAlert('您已被派遣端手動切換為離線狀態 (Off Duty)');
+          await forceOffDuty('您已被派遣端手動切換為離線狀態 (Off Duty)');
           return;
+        }
+
+        if (data.studentStatus && isOnDuty && myName) {
+          const myServerStatus = data.studentStatus[myName];
+          if (!myServerStatus || myServerStatus.status === 'Off Duty') {
+            await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
+            return;
+          }
         }
         
         const activeMissions = (data.activeMissions || []).filter(m => {
@@ -347,10 +371,10 @@
 
                     <div class="bg-gray-900/90 p-3 rounded-xl border border-red-400/60 space-y-2">
                       <div class="text-xs font-bold text-yellow-300 flex justify-between items-center">
-                        <span>MSG</span>
+                        <span>💬 現場與派遣即時對話頻道</span>
                       </div>
 
-                      <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      <div id="student_chat_box_${m.id}" class="chat-scroll-box space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         ${chatListHtml}
                       </div>
 
@@ -375,6 +399,11 @@
             `;
           }).join('');
 
+          // 🆕 渲染完畫面後，將隊員端的對話框滑軌自動拉至最底部
+          document.querySelectorAll('.chat-scroll-box').forEach(box => {
+            box.scrollTop = box.scrollHeight;
+          });
+
           if (hasNewUnaccepted && navigator.vibrate) {
             navigator.vibrate([1000, 200, 1000, 200, 500, 100, 500, 100, 500]);
           }
@@ -388,7 +417,7 @@
       evtSource.onerror = () => {
         if (evtSource) {
           evtSource.close();
-          setTimeout(connectSSE, 2000);
+          if (isOnDuty) setTimeout(connectSSE, 2000);
         }
       };
     }
@@ -401,7 +430,10 @@
     });
 
     window.addEventListener('focus', () => {
-      if (isOnDuty) connectSSE();
+      if (isOnDuty) {
+        connectSSE();
+        reportStatus('On Duty');
+      }
     });
 
     function urlBase64ToUint8Array(base64String) {
@@ -425,4 +457,4 @@
     });
   </script>
 </body>
-</html>
+</html>`
