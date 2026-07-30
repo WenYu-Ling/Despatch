@@ -161,7 +161,6 @@
       localStorage.setItem('student_name', name);
     }
     
-    // 背景心跳機制
     setInterval(async () => {
       if (isOnDuty) {
         const name = document.getElementById('studentName').value.trim();
@@ -179,32 +178,33 @@
       if (navigator.vibrate) navigator.vibrate(0);
     }
 
-    // ⚡ 更新 On/Off Duty 視覺內容（解決無案件時畫面過於空白）
     function updateDutyUI() {
       const btn = document.getElementById('dutyBtn');
       const standbyTitle = document.getElementById('standbyTitle');
       const standbyText = document.getElementById('standbyText');
       const statusDot = document.getElementById('statusDot');
       const dutyGuideBox = document.getElementById('dutyGuideBox');
+      const standbyBox = document.getElementById('standbyBox');
+      if (standbyBox) standbyBox.classList.remove('hidden');
 
       if (isOnDuty) {
         btn.className = "px-6 py-3 rounded-lg font-bold text-sm bg-green-600 text-white shadow-lg shadow-green-900/50";
         btn.innerText = "On Duty (待命中)";
         
         statusDot.className = "w-3.5 h-3.5 rounded-full bg-green-400 animate-pulse";
-        standbyTitle.className = "text-lg font-extrabold text-green-400";
+        standbyTitle.className = "text-base font-extrabold text-green-400";
         standbyTitle.innerText = "系統已建立即時連線";
         standbyText.innerText = "您目前處於待命狀態，畫面將即時接收緊急派遣訊息...";
-        dutyGuideBox.classList.remove('hidden');
+        if (dutyGuideBox) dutyGuideBox.classList.remove('hidden');
       } else {
         btn.className = "px-6 py-3 rounded-lg font-bold text-sm bg-gray-700 text-gray-300";
         btn.innerText = "Off Duty (離線)";
         
         statusDot.className = "w-3.5 h-3.5 rounded-full bg-gray-500";
-        standbyTitle.className = "text-lg font-extrabold text-gray-300";
+        standbyTitle.className = "text-base font-extrabold text-gray-300";
         standbyTitle.innerText = "尚未上線";
         standbyText.innerText = "請先輸入姓名並切換為 On Duty";
-        dutyGuideBox.classList.add('hidden');
+        if (dutyGuideBox) dutyGuideBox.classList.add('hidden');
       }
     }
 
@@ -212,16 +212,13 @@
       isOnDuty = false;
       localStorage.setItem('is_on_duty', 'false');
       stopVibration();
-      updateDutyUI();
       if (evtSource) {
         evtSource.close();
         evtSource = null;
       }
       const container = document.getElementById('missionContainer');
-      const standbyBox = document.getElementById('standbyBox');
-      container.innerHTML = '';
-      standbyBox.classList.remove('hidden');
-
+      if (container) container.innerHTML = '';
+      updateDutyUI();
       if (reasonMessage) {
         await customAlert(reasonMessage);
       }
@@ -370,23 +367,34 @@
     function renderMissions(missions) {
       const container = document.getElementById('missionContainer');
       const standbyBox = document.getElementById('standbyBox');
-      const myName = document.getElementById('studentName').value.trim();
 
-      const activeMissions = missions.filter(m => m.status !== '已結案');
+      const activeMissions = (missions || []).filter(m => m.status !== '已結案');
 
-      if (!isOnDuty || activeMissions.length === 0) {
+      const visibleMissions = activeMissions.filter(m => {
+        const myStatus = localStorage.getItem(`mission_status_${m.id}`) || '未回應';
+        return myStatus !== '已離場' && myStatus !== '已拒絕';
+      });
+
+      if (!isOnDuty || visibleMissions.length === 0) {
         container.innerHTML = '';
-        standbyBox.classList.remove('hidden');
+        if (standbyBox) standbyBox.classList.remove('hidden');
         updateDutyUI();
         return;
       }
 
-      standbyBox.classList.add('hidden');
+      if (standbyBox) standbyBox.classList.add('hidden');
 
-      container.innerHTML = activeMissions.map(m => {
+      const activeEl = document.activeElement;
+      let focusedInputId = null;
+      let currentDraftText = '';
+
+      if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
+        focusedInputId = activeEl.id;
+        currentDraftText = activeEl.value;
+      }
+
+      container.innerHTML = visibleMissions.map(m => {
         const myStatus = localStorage.getItem(`mission_status_${m.id}`) || '未回應';
-        
-        if (myStatus === '已離場' || myStatus === '已拒絕') return '';
 
         const chatHtml = (m.chatMessages || []).map(msg => `
           <div class="p-2 rounded border text-xs ${msg.role === 'admin' ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' : 'bg-gray-800 border-gray-600 text-gray-200'}">
@@ -454,6 +462,14 @@
       document.querySelectorAll('.auto-scroll-chat').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
+
+      if (focusedInputId) {
+        const targetInput = document.getElementById(focusedInputId);
+        if (targetInput) {
+          targetInput.value = currentDraftText;
+          targetInput.focus();
+        }
+      }
     }
 
     function urlBase64ToUint8Array(base64String) {
