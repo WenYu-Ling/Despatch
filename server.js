@@ -57,7 +57,7 @@ app.post('/api/subscribe', (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 3. 派遣 API
+// 3. 派遣 API (修正：背景休眠成員照樣發送 Web Push，動態牆同步發送)
 app.post('/api/dispatch', (req, res) => {
   const { type, location, detail } = req.body;
   if (!type || !location) {
@@ -88,15 +88,18 @@ app.post('/api/dispatch', (req, res) => {
     url: '/student.html'
   });
 
-  const onDutySubscriptions = subscriptions.filter(sub => {
-    return studentStatus[sub.name] && studentStatus[sub.name].status === 'On Duty';
+  const targetSubscriptions = subscriptions.filter(sub => {
+    const statusObj = studentStatus[sub.name];
+    return !statusObj || statusObj.status !== 'Off Duty';
   });
 
   Promise.all(
-    onDutySubscriptions.map(sub =>
+    targetSubscriptions.map(sub =>
       webpush.sendNotification(sub, payload).catch(err => {
         console.error('Push Error:', err);
-        subscriptions = subscriptions.filter(s => s.endpoint !== sub.endpoint);
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          subscriptions = subscriptions.filter(s => s.endpoint !== sub.endpoint);
+        }
       })
     )
   );
@@ -126,6 +129,7 @@ app.post('/api/student/status', (req, res) => {
       }
     }
   } else {
+    // 切換狀態：只有手動按 Off Duty 才會設為 Off Duty
     studentStatus[name] = { 
       status: (status === 'Off Duty') ? 'Off Duty' : 'On Duty', 
       updatedAt: nowStr,
@@ -240,7 +244,6 @@ app.post('/api/student/remove', (req, res) => {
   const { name } = req.body;
   if (name) {
     delete studentStatus[name];
-    
     subscriptions = subscriptions.filter(sub => sub.name !== name);
 
     broadcastSSE({ 
