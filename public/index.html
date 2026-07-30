@@ -91,9 +91,128 @@
 
   </div>
 
+  <!-- 自訂 UI Modal 彈窗區域 -->
+  <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
+        <span>校園急救派遣系統</span>
+      </div>
+      <p id="customConfirmMessage" class="text-gray-200 text-sm leading-relaxed"></p>
+      <div class="flex justify-end space-x-3 pt-2">
+        <button id="modalConfirmCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">
+          取消
+        </button>
+        <button id="modalConfirmOkBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition">
+          確定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="customAlertModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
+        <span>校園急救派遣系統</span>
+      </div>
+      <p id="customAlertMessage" class="text-gray-200 text-sm leading-relaxed"></p>
+      <div class="flex justify-end pt-2">
+        <button id="modalAlertOkBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg text-sm transition">
+          我知道了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="customPromptModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center space-x-2 text-blue-400 font-extrabold text-lg">
+        <span>新增常用地點</span>
+      </div>
+      <p id="customPromptMessage" class="text-gray-200 text-sm leading-relaxed"></p>
+      <input id="customPromptInput" type="text" class="w-full bg-gray-900 border border-gray-600 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-blue-400">
+      <div class="flex justify-end space-x-3 pt-2">
+        <button id="modalPromptCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">
+          取消
+        </button>
+        <button id="modalPromptOkBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition">
+          確定
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let isEditMode = false;
     let evtSource = null;
+
+    // 自訂 Modal 通用處理邏輯
+    function customConfirm(message) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('customConfirmModal');
+        const msgEl = document.getElementById('customConfirmMessage');
+        const okBtn = document.getElementById('modalConfirmOkBtn');
+        const cancelBtn = document.getElementById('modalConfirmCancelBtn');
+
+        msgEl.innerText = message;
+        modal.classList.remove('hidden');
+
+        const handleOk = () => { cleanup(); resolve(true); };
+        const handleCancel = () => { cleanup(); resolve(false); };
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          okBtn.removeEventListener('click', handleOk);
+          cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+      });
+    }
+
+    function customAlert(message) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('customAlertModal');
+        const msgEl = document.getElementById('customAlertMessage');
+        const okBtn = document.getElementById('modalAlertOkBtn');
+
+        msgEl.innerText = message;
+        modal.classList.remove('hidden');
+
+        const handleOk = () => {
+          modal.classList.add('hidden');
+          okBtn.removeEventListener('click', handleOk);
+          resolve();
+        };
+
+        okBtn.addEventListener('click', handleOk);
+      });
+    }
+
+    function customPrompt(message, defaultValue = '') {
+      return new Promise((resolve) => {
+        const modal = document.getElementById('customPromptModal');
+        const msgEl = document.getElementById('customPromptMessage');
+        const inputEl = document.getElementById('customPromptInput');
+        const okBtn = document.getElementById('modalPromptOkBtn');
+        const cancelBtn = document.getElementById('modalPromptCancelBtn');
+
+        msgEl.innerText = message;
+        inputEl.value = defaultValue;
+        modal.classList.remove('hidden');
+        inputEl.focus();
+
+        const handleOk = () => { const val = inputEl.value; cleanup(); resolve(val); };
+        const handleCancel = () => { cleanup(); resolve(null); };
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          okBtn.removeEventListener('click', handleOk);
+          cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+      });
+    }
 
     function connectSSE() {
       if (evtSource) {
@@ -154,7 +273,7 @@
     }
 
     async function addLocation() {
-      const loc = prompt('請輸入新增的常用校園地點：');
+      const loc = await customPrompt('請輸入新增的常用校園地點：');
       if (loc && loc.trim() !== '') {
         await fetch('/api/locations', {
           method: 'POST',
@@ -165,7 +284,7 @@
     }
 
     async function deleteLocation(loc) {
-      if (confirm(`確定要刪除地點「${loc}」嗎？`)) {
+      if (await customConfirm(`確定要刪除地點「${loc}」嗎？`)) {
         await fetch('/api/locations', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -177,7 +296,7 @@
     async function dispatch(type) {
       const location = document.getElementById('selectedLocation').value.trim();
       const detail = document.getElementById('locationDetail').value.trim();
-      if (!location) return alert('請輸入或選擇案件地點！');
+      if (!location) return await customAlert('請輸入或選擇案件地點！');
 
       await fetch('/api/dispatch', {
         method: 'POST',
@@ -189,35 +308,35 @@
     }
 
     async function sendAdminChat(missionId) {
-  const input = document.getElementById(`admin_chat_input_${missionId}`);
-  if (!input) return;
+      const input = document.getElementById(`admin_chat_input_${missionId}`);
+      if (!input) return;
 
-  const message = input.value.trim();
-  if (!message) return;
+      const message = input.value.trim();
+      if (!message) return;
 
-  input.value = '';
+      input.value = '';
 
-  try {
-    const res = await fetch('/api/missions/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ missionId, message })
-    });
+      try {
+        const res = await fetch('/api/missions/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ missionId, message })
+        });
 
-    const result = await res.json();
-    if (!result.success) {
-      alert('訊息發送失敗，請再試一次');
-      input.value = message;
+        const result = await res.json();
+        if (!result.success) {
+          await customAlert('訊息發送失敗，請再試一次');
+          input.value = message;
+        }
+      } catch (err) {
+        console.error('Send message error:', err);
+        await customAlert('網路連線異常，訊息發送失敗');
+        input.value = message;
+      }
     }
-  } catch (err) {
-    console.error('Send message error:', err);
-    alert('網路連線異常，訊息發送失敗');
-    input.value = message;
-  }
-}
 
     async function closeSingleMission(id) {
-      if (confirm('確定要將此案件結案嗎？')) {
+      if (await customConfirm('確定要將此案件結案嗎？')) {
         await fetch('/api/missions/close-single', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -227,7 +346,7 @@
     }
 
     async function deleteSingleMission(id) {
-      if (confirm('確定要刪除此案件紀錄嗎？')) {
+      if (await customConfirm('確定要刪除此案件紀錄嗎？')) {
         await fetch('/api/missions/delete-single', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -237,7 +356,7 @@
     }
 
     async function clearAllMissions() {
-      if (confirm('確定要清除所有歷史案件紀錄嗎？')) {
+      if (await customConfirm('確定要清除所有歷史案件紀錄嗎？')) {
         await fetch('/api/missions/clear', { method: 'POST' });
       }
     }
@@ -400,7 +519,7 @@
     }
 
     async function removeStudent(name) {
-      if (confirm(`確定要更改成員「${name}」的狀態並從動態牆中移除嗎？`)) {
+      if (await customConfirm(`確定要更改成員「${name}」的狀態並從動態牆中移除嗎？`)) {
         await fetch('/api/student/remove', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
