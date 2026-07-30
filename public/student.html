@@ -72,6 +72,7 @@
   <script>
     let isOnDuty = false;
     let evtSource = null;
+    let lastUserActionTime = 0;
 
     function customConfirm(message) {
       return new Promise((resolve) => {
@@ -159,22 +160,23 @@
     }
 
     async function toggleDuty() {
-      const name = document.getElementById('studentName').value.trim();
-      if (!name) return await customAlert('請先輸入姓名！');
+  const name = document.getElementById('studentName').value.trim();
+  if (!name) return await customAlert('請先輸入姓名！');
 
-      isOnDuty = !isOnDuty;
-      localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
-      updateDutyUI();
+  isOnDuty = !isOnDuty;
+  lastUserActionTime = Date.now(); // 🆕 記錄點擊時間點
+  localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
+  updateDutyUI();
 
-      if (isOnDuty) {
-        await setupWebPush();
-        await reportStatus('On Duty');
-        connectSSE();
-      } else {
-        await reportStatus('Off Duty');
-        await forceOffDuty();
-      }
-    }
+  if (isOnDuty) {
+    await setupWebPush();
+    await reportStatus('On Duty');
+    connectSSE();
+  } else {
+    await reportStatus('Off Duty');
+    await forceOffDuty();
+  }
+}
 
     async function acceptMission(missionId) {
       stopVibration();
@@ -281,13 +283,12 @@
           return;
         }
 
-        if (data.studentStatus && isOnDuty && myName) {
-          const myServerStatus = data.studentStatus[myName];
-          if (!myServerStatus || myServerStatus.status === 'Off Duty') {
-            await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
-            return;
-          }
-        }
+        if (data.studentStatus && isOnDuty && myName && (Date.now() - lastUserActionTime > 3000)) {
+        const myServerStatus = data.studentStatus[myName];
+        if (!myServerStatus || myServerStatus.status === 'Off Duty') {
+        await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
+        return;
+        }}
         
         const activeMissions = (data.activeMissions || []).filter(m => {
           if (m.status === '已結案') return false;
