@@ -1,33 +1,37 @@
-// public/sw.js
-
-// 監聽背景 Web Push
+// 監聽 Web Push
 self.addEventListener('push', function(event) {
   if (!event.data) return;
 
-  const data = event.data.json();
+  try {
+    const data = event.data.json();
 
-  const options = {
-    body: data.body,
-    icon: 'icon/icon-192.png',
-    badge: 'icon/icon-192.png',
-    
-    // 高頻急救震動節奏
-    vibrate: [1000, 200, 1000, 200, 500, 100, 500, 100, 500],
-    
-    tag: 'emergency-dispatch',
-    renotify: true,
-    requireInteraction: true,
-    data: { url: data.url || '/student.html' }
-  };
+    const options = {
+      body: data.body,
+      icon: '/icon/icon-192.png',
+      badge: '/icon/icon-192.png',
+      
+      // 震動
+      vibrate: [1000, 200, 1000, 200, 500, 100, 500, 100, 500],
+      
+      tag: 'emergency-dispatch',
+      renotify: true,
+      requireInteraction: true,
+      data: { url: data.url || '/student.html' }
+    };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+    event.waitUntil(
+      self.registration.showNotification(data.title, options)
+    );
+  } catch (err) {
+    console.error('Push event handle error:', err);
+  }
 });
 
-// 點擊通知時直接打開或喚醒 PWA 畫面
+// 點擊通知喚醒
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
+
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/student.html';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
@@ -38,7 +42,7 @@ self.addEventListener('notificationclick', function(event) {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow(event.notification.data.url);
+        return clients.openWindow(targetUrl);
       }
     })
   );

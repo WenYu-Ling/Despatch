@@ -23,7 +23,14 @@ let customLocations = ['綜合教學大樓', '教穡大樓', '圖資館', '體�
 let sseClients = [];
 
 function broadcastSSE(data) {
-  sseClients.forEach(client => client.res.write(`data: ${JSON.stringify(data)}\n\n`));
+  const payload = { customLocations, ...data };
+  sseClients.forEach(client => {
+    try {
+      client.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (err) {
+      console.error('SSE write error:', err);
+    }
+  });
 }
 
 function getTimeToMinute() {
@@ -43,7 +50,7 @@ app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapid
 // 2. Push API
 app.post('/api/subscribe', (req, res) => {
   const { subscription, name } = req.body;
-  if (subscription && subscription.endpoint) {
+  if (subscription && subscription.endpoint && name) {
     subscriptions = subscriptions.filter(sub => sub.name !== name);
     subscriptions.push({ name, ...subscription });
   }
@@ -53,6 +60,10 @@ app.post('/api/subscribe', (req, res) => {
 // 3. 派遣 API
 app.post('/api/dispatch', (req, res) => {
   const { type, location, detail } = req.body;
+  if (!type || !location) {
+    return res.status(400).json({ success: false, error: 'Type and location are required.' });
+  }
+
   const nowStr = getTimeToMinute();
 
   const mission = {
@@ -96,6 +107,10 @@ app.post('/api/dispatch', (req, res) => {
 // 4. 狀態與訊息傳送 API
 app.post('/api/student/status', (req, res) => {
   const { name, status, missionId, reportText } = req.body;
+  if (!name || !status) {
+    return res.status(400).json({ success: false, error: 'Name and status are required.' });
+  }
+
   const nowStr = getTimeToMinute();
   
   if (status === '現場訊息') {
@@ -105,7 +120,7 @@ app.post('/api/student/status', (req, res) => {
         targetMission.chatMessages.push({
           sender: name,
           role: 'student',
-          text: reportText,
+          text: reportText || '',
           time: nowStr
         });
       }
@@ -185,20 +200,13 @@ app.post('/api/missions/clear', (req, res) => {
   res.json({ success: true });
 });
 
-// 修改 broadcastSSE：確保每一次廣播都帶著最新的 customLocations
-function broadcastSSE(data) {
-  // 將目前的 customLocations 預設帶入每次廣播中
-  const payload = { customLocations, ...data };
-  sseClients.forEach(client => client.res.write(`data: ${JSON.stringify(payload)}\n\n`));
-}
-
 // 9. 地點管理 API
 app.get('/api/locations', (req, res) => res.json(customLocations));
 
 app.post('/api/locations', (req, res) => {
   const { location } = req.body;
-  if (location && !customLocations.includes(location)) {
-    customLocations.push(location);
+  if (location && typeof location === 'string' && !customLocations.includes(location.trim())) {
+    customLocations.push(location.trim());
   }
   broadcastSSE({ action: 'LOCATION_UPDATE', customLocations, activeMissions, studentStatus });
   res.json(customLocations);
@@ -242,9 +250,14 @@ app.post('/api/student/remove', (req, res) => {
   res.json({ success: true });
 });
 
-// 13. Ping
+// 12. Ping
 setInterval(() => {
-  sseClients.forEach(client => client.res.write(': ping\n\n'));
+  sseClients.forEach(client => {
+    try {
+      client.res.write(': ping\n\n');
+    } catch (e) {
+    }
+  });
 }, 45000);
 
 const PORT = process.env.PORT || 3000;
