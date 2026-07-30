@@ -35,7 +35,6 @@
 
   <p class="text-center text-xs text-gray-500 py-2">即時派遣系統 • PWA Mobile</p>
 
-  <!-- 自訂 UI Modal 彈窗區域 -->
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -363,13 +362,11 @@
               <h2 class="text-2xl font-black text-yellow-400 tracking-wide">${escapeHtml(m.location)}</h2>
               ${m.detail ? `<p class="text-sm text-gray-200 mt-1 font-medium">${escapeHtml(m.detail)}</p>` : ''}
             </div>
-
-            <!-- 操作按鈕區 -->
             <div class="pt-2">
               ${myStatus === '未回應' ? `
                 <div class="grid grid-cols-2 gap-3">
                   <button onclick="acceptMission(${m.id})" class="py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
-                    已接案 (前往)
+                    接受案件 (前往)
                   </button>
                   <button onclick="rejectMission(${m.id})" class="py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-extrabold rounded-xl active:scale-95 transition">
                     無法前往
@@ -379,18 +376,16 @@
 
               ${myStatus === '已接案' ? `
                 <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-black text-lg rounded-xl shadow-lg active:scale-95 transition">
-                  📍 我已到達現場
+                已到達現場
                 </button>
               ` : ''}
 
               ${myStatus === '已到場' ? `
                 <button onclick="leaveScene(${m.id})" class="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
-                  ✅ 任務完成 / 已離場
+                已離場
                 </button>
               ` : ''}
             </div>
-
-            <!-- 即時溝通視窗 -->
             <div class="bg-gray-900/90 p-3 rounded-xl border border-gray-700/80 space-y-3">
               <div class="text-xs font-bold text-yellow-400">即時現場對話</div>
               <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
