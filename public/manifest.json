@@ -1,7 +1,7 @@
 {
-  "name": "校園勤務派遣系統",
-  "short_name": "校園勤務派遣系統",
-  "start_url": "/student.html",
+  "name": "校園急救派遣系統",
+  "short_name": "校園急救派遣",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#111827",
   "theme_color": "#ef4444",
