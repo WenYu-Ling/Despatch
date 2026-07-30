@@ -66,7 +66,7 @@ app.post('/api/subscribe', (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 3. 派遣 API (修正：背景休眠成員照樣發送 Web Push，動態牆同步發送)
+// 3. 派遣 API
 app.post('/api/dispatch', (req, res) => {
   const { type, location, detail } = req.body;
   if (!type || !location) {
