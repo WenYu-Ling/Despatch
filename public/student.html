@@ -170,13 +170,22 @@
     }
 
     async function submitReport(missionId) {
-      const input = document.getElementById(`report_input_${missionId}`);
-      const text = input ? input.value.trim() : '';
-      if (!text) return await customAlert('請先輸入訊息內容！');
+  const input = document.getElementById(`report_input_${missionId}`);
+  if (!input) return;
 
-      await reportStatus('現場訊息', missionId, text);
-      input.value = '';
-    }
+  const text = input.value.trim();
+  if (!text) return await customAlert('請先輸入訊息內容！');
+
+  input.value = '';
+
+  try {
+    await reportStatus('現場訊息', missionId, text);
+  } catch (e) {
+    console.error('Status report failed:', e);
+    await customAlert('網路連線異常，訊息發送失敗！');
+    input.value = text;
+  }
+}
 
     async function leaveScene(missionId) {
       if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
