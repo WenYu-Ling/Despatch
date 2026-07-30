@@ -145,7 +145,7 @@
     </div>
   </div>
 
-  <script>
+<script>
     let isEditMode = false;
     let evtSource = null;
     let activeFocusedInputId = null;
@@ -218,6 +218,7 @@
       });
     }
 
+    // ⚡ SSE 連線機制
     function connectSSE() {
       if (evtSource) {
         evtSource.close();
@@ -233,7 +234,6 @@
             renderLocations(data.customLocations);
           }
           
-          // ⚡ 修正：只要收到廣播，不論欄位組合為何，均自動更新成員與案件視窗！
           if (data.studentStatus) {
             renderStudents(data.studentStatus);
           }
@@ -245,7 +245,6 @@
         }
       };
 
-      // ⚡ 修正：發生錯誤時自動 2 秒後重連
       evtSource.onerror = () => {
         if (evtSource) {
           evtSource.close();
@@ -307,7 +306,6 @@
         body: JSON.stringify({ type, location, detail })
       });
 
-      // 派遣完成後一併清空地點與補充說明框
       locationInput.value = '';
       detailInput.value = '';
 
@@ -410,11 +408,9 @@
           badgeClass = 'bg-green-900/80 text-green-300 border border-green-500 font-bold';
           displayMissionStatus = '已離場';
         } else if (m.status === '已接案') {
-          // ⚡ 新增：接案時呈現亮藍色顯眼標籤
           badgeClass = 'bg-blue-600 text-white font-extrabold border border-blue-400 animate-pulse';
           displayMissionStatus = '已接案 (趕往現場中)';
         } else if (m.status === '已到場') {
-          // ⚡ 新增：到場時呈現亮黃色顯眼標籤
           badgeClass = 'bg-yellow-500 text-gray-900 font-extrabold border border-yellow-300';
           displayMissionStatus = '隊員已到場';
         }
@@ -598,6 +594,16 @@
         }
       }
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      connectSSE();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        connectSSE();
+      }
+    });
   </script>
 </body>
 </html>
