@@ -303,13 +303,14 @@
       const detail = document.getElementById('locationDetail').value.trim();
       if (!location) return await customAlert('請輸入或選擇案件地點！');
 
-      await fetch('/api/dispatch', {
+      const res = await fetch('/api/dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, location, detail })
       });
 
       document.getElementById('locationDetail').value = '';
+      connectSSE();
     }
 
     async function sendAdminChat(missionId) {

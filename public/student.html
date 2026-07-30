@@ -293,18 +293,10 @@
         const data = JSON.parse(e.data);
         const myName = document.getElementById('studentName').value.trim();
 
+        // 1. 只有當後端明確發出 'REMOVE_STUDENT' 且指定自己的名字時，才跳出被剔除提示 (移除舊有過於敏感的自動比對，防止 Vercel 重置誤判)
         if (data.action === 'REMOVE_STUDENT' && data.removedName === myName) {
           await forceOffDuty('您已被派遣端手動切換為離線狀態 (Off Duty)');
           return;
-        }
-
-        // 僅在點擊切換超過 4 秒後，才進行伺服器狀態校驗，避免非同步快取延遲誤判定
-        if (data.studentStatus && isOnDuty && myName && (Date.now() - lastUserActionTime > 4000)) {
-          const myServerStatus = data.studentStatus[myName];
-          if (!myServerStatus || myServerStatus.status === 'Off Duty') {
-            await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
-            return;
-          }
         }
         
         const activeMissions = (data.activeMissions || []).filter(m => {
@@ -434,11 +426,12 @@
       evtSource.onerror = () => {
         if (evtSource) {
           evtSource.close();
-          if (isOnDuty) setTimeout(connectSSE, 2000);
+          if (isOnDuty) setTimeout(connectSSE, 1500);
         }
       };
     }
 
+    // 🆕 針對 iOS 與行動裝置強化：當解鎖螢幕或切換回分頁時，強制重新建立連線並補報 On Duty 狀態
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && isOnDuty) {
         connectSSE();
