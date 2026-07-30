@@ -19,8 +19,6 @@ webpush.setVapidDetails(
 
 const DEFAULT_LOCATIONS = ['綜合教學大樓', '教穡大樓', '圖資館', '體育館', '操場', '風雨球場', '格致大樓', '電資二館', '工學院', '生資院', '人管院'];
 let sseClients = [];
-
-// 💡 記憶體快取 (減少向 Redis 讀取的次數)
 let cache = {
   activeMissions: null,
   studentStatus: null,
@@ -28,7 +26,7 @@ let cache = {
   subscriptions: null
 };
 
-// 統一讀取資料 (優先使用快取，無快取才讀 Redis)
+// 統一讀取資料
 async function getSystemData(forceRefresh = false) {
   if (forceRefresh || !cache.activeMissions || !cache.studentStatus) {
     const [missions, status, locations, subs] = await Promise.all([
@@ -74,7 +72,7 @@ function getTimeToMinute() {
 // 1. VAPID Key API
 app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
-// 2. Push API (防重複訂閱寫入)
+// 2. Push API
 app.post('/api/subscribe', async (req, res) => {
   const { subscription, name } = req.body;
   if (subscription && subscription.endpoint && name) {

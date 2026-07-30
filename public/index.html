@@ -13,8 +13,6 @@
   </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-6">
-
-  <!-- 頂部狀態列 -->
   <header class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700 shadow-xl">
     <div class="flex items-center space-x-3">
       <h1 class="text-xl font-extrabold tracking-wide text-red-500">校園急救派遣</h1>
@@ -33,7 +31,6 @@
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="lg:col-span-2 space-y-6">
 
-      <!-- 1. 選擇或輸入案件地點 (原步驟 2) -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-sm font-bold text-gray-400 tracking-wider">1. 選擇或輸入案件地點</h2>
@@ -57,7 +54,6 @@
         </div>
       </div>
 
-      <!-- 2. 選擇案件類型 (原步驟 1) -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">2. 選擇案件類型 (點擊按鈕即刻派遣)</h2>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -218,7 +214,6 @@
       });
     }
 
-    // ⚡ SSE 連線機制
     function connectSSE() {
       if (evtSource) {
         evtSource.close();
@@ -392,12 +387,10 @@
         const hasParticipants = participants.length > 0;
         const isAllLeft = hasParticipants && participants.every(name => studentLatestStatus[name] === '已離場');
 
-        // 卡片背景
         const cardBgClass = (isClosed || isAllLeft)
           ? 'bg-gray-800/60 border-gray-700' 
           : 'bg-red-950/40 border-red-700/60';
 
-        // 右上角案件總體狀態標籤
         let displayMissionStatus = m.status;
         let badgeClass = 'bg-red-600/30 text-red-300 border border-red-500';
 
