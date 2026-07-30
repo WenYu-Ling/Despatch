@@ -51,8 +51,17 @@ app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapid
 app.post('/api/subscribe', (req, res) => {
   const { subscription, name } = req.body;
   if (subscription && subscription.endpoint && name) {
-    subscriptions = subscriptions.filter(sub => sub.name !== name);
+    subscriptions = subscriptions.filter(sub => sub.name !== name && sub.endpoint !== subscription.endpoint);
     subscriptions.push({ name, ...subscription });
+    
+    if (!studentStatus[name] || studentStatus[name].status === 'Off Duty') {
+      studentStatus[name] = {
+        status: 'On Duty',
+        updatedAt: getTimeToMinute(),
+        timestamp: Date.now()
+      };
+      broadcastSSE({ action: 'UPDATE_ALL', studentStatus, activeMissions });
+    }
   }
   res.status(201).json({ success: true });
 });

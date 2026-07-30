@@ -130,6 +130,18 @@
       const name = document.getElementById('studentName').value.trim();
       localStorage.setItem('student_name', name);
     }
+    setInterval(async () => {
+      if (isOnDuty) {
+        const name = document.getElementById('studentName').value.trim();
+        if (name) {
+          try {
+            await reportStatus('On Duty');
+          } catch (e) {
+            console.log('Heartbeat skipped:', e);
+          }
+        }
+      }
+    }, 180000);
 
     function stopVibration() {
       if (navigator.vibrate) navigator.vibrate(0);
