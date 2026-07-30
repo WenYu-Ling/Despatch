@@ -581,7 +581,7 @@
             
             <div class="flex items-center space-x-2">
               <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
-              <button onclick="removeStudent('${name}', ${isOff})" title="${isOff ? '從列表中刪除成員' : '強制切換為 Off Duty'}" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
+              <button onclick="removeStudent('${name}', '${s.status}')" title="${isOff ? '從列表中刪除成員' : '強制切換為 Off Duty'}" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
                 ✕
               </button>
             </div>
@@ -590,9 +590,11 @@
       }).join('');
     }
 
-    async function removeStudent(name, isOff) {
+    async function removeStudent(name, status) {
+      const isOff = status === 'Off Duty';
+
       const confirmText = isOff 
-        ? `確定要將成員「${name}」從動態牆列表中完全刪除嗎？`
+        ? `確定要將離線成員「${name}」從動態牆列表中完全刪除嗎？`
         : `確定要強制將成員「${name}」切換為 Off Duty (離線) 嗎？`;
 
       if (await customConfirm(confirmText)) {
