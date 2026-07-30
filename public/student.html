@@ -180,7 +180,7 @@
     }
 
   isOnDuty = !isOnDuty;
-  lastUserActionTime = Date.now(); // 🆕 記錄點擊時間點
+  lastUserActionTime = Date.now();
   localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
   updateDutyUI();
 
@@ -192,7 +192,6 @@
     await reportStatus('Off Duty');
     await forceOffDuty();
   }
-}
 
     async function acceptMission(missionId) {
       stopVibration();
@@ -240,7 +239,7 @@
       }
     }
 
-    async function setupWebPush() {
+      async function setupWebPush() {
       const name = document.getElementById('studentName').value.trim();
       if (!name) return;
 
