@@ -14,7 +14,8 @@
 <body class="bg-gray-900 text-white min-h-screen p-4 flex flex-col justify-between">
 
   <div>
-    <div class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-4 border border-gray-700">
+    <!-- 頂部狀態列 -->
+    <div class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-4 border border-gray-700 shadow-lg">
       <div>
         <span class="text-xs text-gray-400 block">成員</span>
         <input id="studentName" type="text" placeholder="輸入姓名" class="bg-transparent font-bold text-lg text-white border-b border-gray-600 focus:outline-none focus:border-red-500 w-32" onchange="saveName()">
@@ -24,17 +25,37 @@
       </button>
     </div>
 
-    <div id="missionContainer" class="space-y-4">
-    </div>
+    <!-- 任務卡片容器 -->
+    <div id="missionContainer" class="space-y-4"></div>
 
-    <div id="standbyBox" class="bg-gray-800/50 border border-gray-700 p-8 rounded-2xl text-center my-8">
-      <div class="inline-block p-4 rounded-full bg-gray-700/50 mb-3">📡</div>
-      <p id="standbyText" class="text-gray-400 text-sm">請先輸入姓名並切換為 On Duty</p>
+    <!-- 待命中 / 離線 畫面 (豐富化視覺內容，非純空白) -->
+    <div id="standbyBox" class="bg-gray-800/60 border border-gray-700 p-6 rounded-2xl my-6 space-y-4 shadow-xl">
+      <div class="flex items-center justify-center space-x-3">
+        <div id="statusDot" class="w-3.5 h-3.5 rounded-full bg-gray-500"></div>
+        <span id="standbyTitle" class="text-lg font-extrabold text-gray-300">尚未上線</span>
+      </div>
+      <p id="standbyText" class="text-gray-400 text-xs text-center leading-relaxed">
+        請先輸入姓名並切換為 On Duty
+      </p>
+
+      <!-- 待命提示卡片 (連線成功時顯示，確保畫面內容豐滿) -->
+      <div id="dutyGuideBox" class="hidden pt-3 border-t border-gray-700/60 text-left space-y-2.5 text-xs text-gray-300">
+        <div class="flex items-center space-x-2 text-yellow-400 font-bold">
+          <span>⚡</span>
+          <span>即時勤務注意事項</span>
+        </div>
+        <ul class="list-disc list-inside space-y-1 text-gray-400">
+          <li>保持網路連線與手機通知開啟。</li>
+          <li>收到急救派遣時，手機將發出推播並即時顯示案件卡片。</li>
+          <li>接案後請迅速移動至案件地點，並善用「現場對話」回報狀況。</li>
+        </ul>
+      </div>
     </div>
   </div>
 
-  <p class="text-center text-xs text-gray-500 py-2">即時派遣系統 • PWA Mobile</p>
+  <p class="text-center text-xs text-gray-500 py-2">校園急救即時派遣系統 • PWA Mobile</p>
 
+  <!-- 自訂 UI Modal 彈窗區域 -->
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -130,6 +151,7 @@
       localStorage.setItem('student_name', name);
     }
     
+    // 背景心跳機制
     setInterval(async () => {
       if (isOnDuty) {
         const name = document.getElementById('studentName').value.trim();
@@ -147,18 +169,32 @@
       if (navigator.vibrate) navigator.vibrate(0);
     }
 
+    // ⚡ 更新 On/Off Duty 視覺內容（解決無案件時畫面過於空白）
     function updateDutyUI() {
       const btn = document.getElementById('dutyBtn');
+      const standbyTitle = document.getElementById('standbyTitle');
       const standbyText = document.getElementById('standbyText');
+      const statusDot = document.getElementById('statusDot');
+      const dutyGuideBox = document.getElementById('dutyGuideBox');
 
       if (isOnDuty) {
         btn.className = "px-6 py-3 rounded-lg font-bold text-sm bg-green-600 text-white shadow-lg shadow-green-900/50";
         btn.innerText = "On Duty (待命中)";
-        standbyText.innerText = "系統已建立即時連線，等待案件派遣中...";
+        
+        statusDot.className = "w-3.5 h-3.5 rounded-full bg-green-400 animate-pulse";
+        standbyTitle.className = "text-lg font-extrabold text-green-400";
+        standbyTitle.innerText = "系統已建立即時連線";
+        standbyText.innerText = "您目前處於待命狀態，畫面將即時接收緊急派遣訊息...";
+        dutyGuideBox.classList.remove('hidden');
       } else {
         btn.className = "px-6 py-3 rounded-lg font-bold text-sm bg-gray-700 text-gray-300";
         btn.innerText = "Off Duty (離線)";
-        standbyText.innerText = "已離線";
+        
+        statusDot.className = "w-3.5 h-3.5 rounded-full bg-gray-500";
+        standbyTitle.className = "text-lg font-extrabold text-gray-300";
+        standbyTitle.innerText = "尚未上線";
+        standbyText.innerText = "請先輸入姓名並切換為 On Duty";
+        dutyGuideBox.classList.add('hidden');
       }
     }
 
@@ -362,11 +398,12 @@
               <h2 class="text-2xl font-black text-yellow-400 tracking-wide">${escapeHtml(m.location)}</h2>
               ${m.detail ? `<p class="text-sm text-gray-200 mt-1 font-medium">${escapeHtml(m.detail)}</p>` : ''}
             </div>
+
             <div class="pt-2">
               ${myStatus === '未回應' ? `
                 <div class="grid grid-cols-2 gap-3">
                   <button onclick="acceptMission(${m.id})" class="py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
-                    接受案件 (前往)
+                    接受案件
                   </button>
                   <button onclick="rejectMission(${m.id})" class="py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-extrabold rounded-xl active:scale-95 transition">
                     無法前往
@@ -376,29 +413,38 @@
 
               ${myStatus === '已接案' ? `
                 <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-black text-lg rounded-xl shadow-lg active:scale-95 transition">
-                已到達現場
+                  已到達現場
                 </button>
               ` : ''}
 
               ${myStatus === '已到場' ? `
                 <button onclick="leaveScene(${m.id})" class="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
-                已離場
+                  已離場
                 </button>
               ` : ''}
             </div>
+
             <div class="bg-gray-900/90 p-3 rounded-xl border border-gray-700/80 space-y-3">
               <div class="text-xs font-bold text-yellow-400">即時現場對話</div>
-              <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+              
+              <!-- ⚡ 對話訊息視窗 (帶有 auto-scroll-chat 類別) -->
+              <div class="auto-scroll-chat space-y-1.5 max-h-36 overflow-y-auto pr-1">
                 ${chatHtml || '<p class="text-xs text-gray-500">暫無對話紀錄</p>'}
               </div>
+
               <div class="flex space-x-2 pt-1 border-t border-gray-700/50">
-                <input id="report_input_${m.id}" type="text" placeholder="回報現場狀況..." class="flex-1 bg-gray-800 text-white px-3 py-2 rounded-lg text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
+                <input id="report_input_${m.id}" type="text" placeholder="回報現場狀況..." onkeydown="if(event.key==='Enter') submitReport(${m.id})" class="flex-1 bg-gray-800 text-white px-3 py-2 rounded-lg text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
                 <button onclick="submitReport(${m.id})" class="px-3 py-2 bg-yellow-500 text-gray-900 font-bold text-xs rounded-lg whitespace-nowrap">發送</button>
               </div>
             </div>
           </div>
         `;
       }).join('');
+
+      // ⚡ 自動捲動對話訊息欄至最底部
+      document.querySelectorAll('.auto-scroll-chat').forEach(box => {
+        box.scrollTop = box.scrollHeight;
+      });
     }
 
     function urlBase64ToUint8Array(base64String) {
