@@ -86,13 +86,12 @@ app.post('/api/dispatch', (req, res) => {
   res.json({ success: true, mission });
 });
 
-// 4. 隊員狀態與案件訊息傳送 API (已修正：純傳訊息時不複寫 On/Off Duty 狀態時間)
+// 4. 隊員狀態與案件訊息傳送 API
 app.post('/api/student/status', (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   const nowStr = getTimeToMinute();
   
   if (status === '現場訊息') {
-    // 僅新增對話紀錄，不干擾隊員的上線狀態與動態牆時間
     if (missionId) {
       const targetMission = activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
@@ -105,16 +104,17 @@ app.post('/api/student/status', (req, res) => {
       }
     }
   } else {
-    // 隊員勤務狀態變更 (On Duty / Off Duty / 已接單 / 已到場 / 已拒絕 / 已離場)
+    // 更新隊員個人狀態與時間戳記
     studentStatus[name] = { 
       status: (status === 'Off Duty') ? 'Off Duty' : 'On Duty', 
-      updatedAt: nowStr, // 修正：補上逗號
+      updatedAt: nowStr,
       timestamp: Date.now() 
     };
 
     if (missionId) {
       const targetMission = activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
+        // 1. 只要有回應，記錄一律推入 responseLogs (這樣所有人接受/到場/拒絕都會被上記錄)
         targetMission.responseLogs.push({
           id: Date.now(),
           name,
@@ -122,6 +122,7 @@ app.post('/api/student/status', (req, res) => {
           time: nowStr
         });
 
+        // 2. 更新案件整體的核心狀態 (只要有人接單或到場，就更新案件的主標籤)
         if (status === '已接單' && targetMission.status === '派遣中') {
           targetMission.status = '已接單';
         } else if (status === '已到場') {

@@ -355,10 +355,28 @@
               <span class="font-bold text-sm text-gray-200 block">${name}</span>
               <span class="text-xs text-gray-500 font-mono">${s.updatedAt || ''}</span>
             </div>
-            <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
+            
+            <div class="flex items-center space-x-2">
+              <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
+              <!-- 新增：手動刪除按鈕 -->
+              <button onclick="removeStudent('${name}')" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
+                ✕
+              </button>
+            </div>
           </div>
         `;
       }).join('');
+    }
+
+    // 新增：呼叫後端刪除成員的函式
+    async function removeStudent(name) {
+      if (confirm(`確定要將成員「${name}」從動態牆移除嗎？`)) {
+        await fetch('/api/student/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+      }
     }
   </script>
 </body>
