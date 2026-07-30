@@ -400,7 +400,7 @@
     }
 
     async function removeStudent(name) {
-      if (confirm(`確定要將成員「${name}」從動態牆移除嗎？`)) {
+      if (confirm(`確定要更改成員「${name}」的狀態並從動態牆中移除嗎？`)) {
         await fetch('/api/student/remove', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
