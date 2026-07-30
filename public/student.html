@@ -262,7 +262,7 @@
                       </div>
 
                       <div class="flex space-x-2 pt-1">
-                        <input id="report_input_${m.id}" type="text" placeholder="輸入訊息..." class="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-yellow-400">
+                        <input id="report_input_${m.id}" type="text" placeholder="輸入訊息 (按 Enter 送出)..." onkeydown="if(event.key==='Enter') submitReport(${m.id})" class="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-yellow-400">
                         <button onclick="submitReport(${m.id})" class="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-sm rounded-lg transition shadow whitespace-nowrap">
                           傳送
                         </button>
