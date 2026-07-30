@@ -314,37 +314,37 @@
     }
 
     async function sendAdminChat(missionId) {
-    const inputId = `admin_chat_input_${missionId}`;
-    const input = document.getElementById(inputId);
-    if (!input) return;
+      const inputId = `admin_chat_input_${missionId}`;
+      const input = document.getElementById(inputId);
+      if (!input) return;
 
-    const message = input.value.trim();
-    if (!message) return;
+      const message = input.value.trim();
+      if (!message) return;
 
-    activeFocusedInputId = inputId;
-    input.value = '';
+      activeFocusedInputId = inputId;
+      input.value = '';
 
-    try {
-      const res = await fetch('/api/missions/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ missionId, message })
-      });
+      try {
+        const res = await fetch('/api/missions/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ missionId, message })
+        });
 
-      const result = await res.json();
-      if (!result.success) {
-        await customAlert('訊息發送失敗，請再試一次');
+        const result = await res.json();
+        if (!result.success) {
+          await customAlert('訊息發送失敗，請再試一次');
+          input.value = message;
+        }
+      } catch (err) {
+        console.error('Send message error:', err);
+        await customAlert('網路連線異常，訊息發送失敗');
         input.value = message;
+      } finally {
+        const targetInput = document.getElementById(inputId);
+        if (targetInput) targetInput.focus();
       }
-    } catch (err) {
-      console.error('Send message error:', err);
-      await customAlert('網路連線異常，訊息發送失敗');
-      input.value = message;
-    } finally {
-      const targetInput = document.getElementById(inputId);
-      if (targetInput) targetInput.focus();
     }
-  }
 
     async function closeSingleMission(id) {
       if (await customConfirm('確定要將此案件結案嗎？')) {
@@ -462,7 +462,7 @@
                   <span>成員動態紀錄</span>
                   <span>${m.responseLogs.length} 筆</span>
                 </div>
-                <div class="space-y-1 max-h-40 overflow-y-auto pr-1">
+                <div class="log-scroll-box space-y-1 max-h-40 overflow-y-auto pr-1">
                   ${logsHtml}
                 </div>
               </div>
@@ -477,7 +477,7 @@
 
                 ${!isClosed ? `
                   <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
-                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
+                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." onfocus="activeFocusedInputId='admin_chat_input_${m.id}'" onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
                     <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
                       發送
                     </button>
@@ -490,10 +490,20 @@
         `;
       }).join('');
 
-      // 🆕 渲染完畫面後，將所有對話框滑軌自動捲動到最底部 (展示最新訊息)
+      // 自動將對話視窗與動態紀錄視窗捲動至最底部
       document.querySelectorAll('.chat-scroll-box').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
+
+      document.querySelectorAll('.log-scroll-box').forEach(box => {
+        box.scrollTop = box.scrollHeight;
+      });
+
+      // 畫面重繪後保持原輸入框焦點
+      if (activeFocusedInputId) {
+        const focusedEl = document.getElementById(activeFocusedInputId);
+        if (focusedEl) focusedEl.focus();
+      }
     }
 
     function renderStudents(students) {
