@@ -601,7 +601,6 @@
     setInterval(async () => {
       if (document.visibilityState === 'visible') {
         try {
-          // 強制重新建立連線拉取 Redis 最新快取
           connectSSE();
         } catch (e) {
           console.log('Background sync skipped');
