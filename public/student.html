@@ -367,6 +367,7 @@
     function renderMissions(missions) {
       const container = document.getElementById('missionContainer');
       const standbyBox = document.getElementById('standbyBox');
+      const myName = document.getElementById('studentName').value.trim();
 
       const activeMissions = (missions || []).filter(m => m.status !== '已結案');
 
@@ -396,15 +397,33 @@
       container.innerHTML = visibleMissions.map(m => {
         const myStatus = localStorage.getItem(`mission_status_${m.id}`) || '未回應';
 
-        const chatHtml = (m.chatMessages || []).map(msg => `
-          <div class="p-2 rounded border text-xs ${msg.role === 'admin' ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' : 'bg-gray-800 border-gray-600 text-gray-200'}">
-            <div class="flex justify-between items-center mb-0.5 font-bold">
-              <span>${msg.role === 'admin' ? '🗣️ 派遣端' : '👤 ' + escapeHtml(msg.sender)}</span>
-              <span class="text-gray-400 font-mono text-[10px]">${msg.time}</span>
+        // ⚡ 三色對話訊息判斷邏輯
+        const chatHtml = (m.chatMessages || []).map(msg => {
+          const isAdmin = msg.role === 'admin';
+          const isMe = !isAdmin && msg.sender === myName;
+
+          // 判斷三種顏色樣式
+          let bgStyle = 'bg-gray-800 border-gray-600 text-gray-200'; // 他人：灰色
+          if (isAdmin) {
+            bgStyle = 'bg-purple-950/80 border-purple-500/50 text-purple-200'; // 派遣端：紫色
+          } else if (isMe) {
+            bgStyle = 'bg-yellow-950/80 border-yellow-500/50 text-yellow-200'; // 自己：黃色
+          }
+
+          const senderName = isAdmin 
+            ? '🗣️ 派遣端' 
+            : (isMe ? `👤 ${escapeHtml(msg.sender)} (我)` : `👤 ${escapeHtml(msg.sender)}`);
+
+          return `
+            <div class="p-2 rounded border text-xs ${bgStyle}">
+              <div class="flex justify-between items-center mb-0.5 font-bold">
+                <span>${senderName}</span>
+                <span class="text-gray-400 font-mono text-[10px]">${msg.time}</span>
+              </div>
+              <div>${escapeHtml(msg.text)}</div>
             </div>
-            <div>${escapeHtml(msg.text)}</div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
 
         return `
           <div class="bg-red-950/40 border-2 border-red-600/80 rounded-2xl p-5 shadow-2xl space-y-4">
