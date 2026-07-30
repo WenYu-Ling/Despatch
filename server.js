@@ -42,9 +42,10 @@ app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapid
 
 // 2. Push API
 app.post('/api/subscribe', (req, res) => {
-  const subscription = req.body;
-  if (!subscriptions.find(sub => sub.endpoint === subscription.endpoint)) {
-    subscriptions.push(subscription);
+  const { subscription, name } = req.body;
+  if (subscription && subscription.endpoint) {
+    subscriptions = subscriptions.filter(sub => sub.name !== name);
+    subscriptions.push({ name, ...subscription });
   }
   res.status(201).json({ success: true });
 });
@@ -76,9 +77,16 @@ app.post('/api/dispatch', (req, res) => {
     url: '/student.html'
   });
 
+  const onDutySubscriptions = subscriptions.filter(sub => {
+    return studentStatus[sub.name] && studentStatus[sub.name].status === 'On Duty';
+  });
+
   Promise.all(
-    subscriptions.map(sub =>
-      webpush.sendNotification(sub, payload).catch(err => console.error('Push Error:', err))
+    onDutySubscriptions.map(sub =>
+      webpush.sendNotification(sub, payload).catch(err => {
+        console.error('Push Error:', err);
+        subscriptions = subscriptions.filter(s => s.endpoint !== sub.endpoint);
+      })
     )
   );
 
