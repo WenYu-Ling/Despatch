@@ -5,7 +5,6 @@
   <link rel="apple-touch-icon" href="/icon/icon-512.png">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <link rel="manifest" href="/manifest.json">
   <title>成員勤務端</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -38,6 +37,7 @@
 
   <script>
     let isOnDuty = false;
+    let evtSource = null;
 
     function saveName() {
       const name = document.getElementById('studentName').value.trim();
@@ -74,9 +74,11 @@
       if (isOnDuty) {
         await setupWebPush();
         await reportStatus('On Duty');
+        connectSSE(); // 切換上線時立刻建立連線
       } else {
         stopVibration();
         await reportStatus('Off Duty');
+        if (evtSource) evtSource.close();
       }
     }
 
@@ -92,7 +94,6 @@
       await reportStatus('已到場', missionId);
     }
 
-    // 發送現場對話訊息
     async function submitReport(missionId) {
       const input = document.getElementById(`report_input_${missionId}`);
       const text = input ? input.value.trim() : '';
@@ -159,133 +160,158 @@
       }
     }
 
-    // SSE 即時廣播監聽
-    const evtSource = new EventSource('/api/stream');
-    evtSource.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      const myName = document.getElementById('studentName').value.trim();
-      
-      const activeMissions = (data.activeMissions || []).filter(m => {
-        if (m.status === '已結案') return false;
-        const localStatus = localStorage.getItem(`mission_status_${m.id}`);
-        return localStatus !== '已拒絕' && localStatus !== '已離場';
-      });
+    // 🆕 強化版 SSE 即時廣播監聽與自動重連機制
+    function connectSSE() {
+      if (evtSource) {
+        evtSource.close();
+      }
 
-      const container = document.getElementById('missionContainer');
-      const standbyBox = document.getElementById('standbyBox');
+      evtSource = new EventSource('/api/stream');
 
-      if (activeMissions.length > 0 && isOnDuty) {
-        standbyBox.classList.add('hidden');
-        let hasNewUnaccepted = false;
-
-        container.innerHTML = activeMissions.map(m => {
+      evtSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        const myName = document.getElementById('studentName').value.trim();
+        
+        const activeMissions = (data.activeMissions || []).filter(m => {
+          if (m.status === '已結案') return false;
           const localStatus = localStorage.getItem(`mission_status_${m.id}`);
+          return localStatus !== '已拒絕' && localStatus !== '已離場';
+        });
 
-          const isAccepted = localStatus === '已接案';
-          const isArrived = localStatus === '已到場';
-          const isJoined = isAccepted || isArrived;
+        const container = document.getElementById('missionContainer');
+        const standbyBox = document.getElementById('standbyBox');
 
-          if (!isJoined) hasNewUnaccepted = true;
+        if (activeMissions.length > 0 && isOnDuty) {
+          standbyBox.classList.add('hidden');
+          let hasNewUnaccepted = false;
 
-          // 渲染聊天對話紀錄
-          const chatListHtml = (m.chatMessages || []).length > 0
-            ? m.chatMessages.map(msg => {
-                const isAdmin = msg.role === 'admin';
-                const isMe = msg.sender === myName;
+          container.innerHTML = activeMissions.map(m => {
+            const localStatus = localStorage.getItem(`mission_status_${m.id}`);
 
-                return `
-                  <div class="p-2 rounded border text-xs ${
-                    isAdmin 
-                      ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' 
-                      : (isMe ? 'bg-yellow-950/80 border-yellow-500/50 text-yellow-200' : 'bg-gray-800 border-gray-600 text-gray-200')
-                  }">
-                    <div class="flex justify-between items-center mb-0.5 font-bold">
-                      <span>${isAdmin ? '🗣️ ' : '👤 '}${msg.sender}</span>
-                      <span class="text-gray-400 font-mono">${msg.time}</span>
+            const isAccepted = localStatus === '已接案';
+            const isArrived = localStatus === '已到場';
+            const isJoined = isAccepted || isArrived;
+
+            if (!isJoined) hasNewUnaccepted = true;
+
+            const chatListHtml = (m.chatMessages || []).length > 0
+              ? m.chatMessages.map(msg => {
+                  const isAdmin = msg.role === 'admin';
+                  const isMe = msg.sender === myName;
+
+                  return `
+                    <div class="p-2 rounded border text-xs ${
+                      isAdmin 
+                        ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' 
+                        : (isMe ? 'bg-yellow-950/80 border-yellow-500/50 text-yellow-200' : 'bg-gray-800 border-gray-600 text-gray-200')
+                    }">
+                      <div class="flex justify-between items-center mb-0.5 font-bold">
+                        <span>${isAdmin ? '🗣️ ' : '👤 '}${msg.sender}</span>
+                        <span class="text-gray-400 font-mono">${msg.time}</span>
+                      </div>
+                      <div>${msg.text}</div>
                     </div>
-                    <div>${msg.text}</div>
+                  `;
+                }).join('')
+              : `<p class="text-xs text-gray-400 text-center py-2">目前尚無現場回報對話</p>`;
+
+            return `
+              <div class="bg-red-600 text-white p-6 rounded-2xl shadow-2xl border-4 border-red-400 ${!isJoined ? 'animate-pulse' : ''}">
+                <div class="flex justify-between items-start mb-2">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs font-bold tracking-widest bg-red-800 text-red-200 px-2 py-1 rounded">緊急派遣</span>
+                    <span class="text-xs font-mono bg-black/40 px-2 py-0.5 rounded text-yellow-300">${m.createdAt}</span>
                   </div>
-                `;
-              }).join('')
-            : `<p class="text-xs text-gray-400 text-center py-2">目前尚無現場回報對話</p>`;
-
-          return `
-            <div class="bg-red-600 text-white p-6 rounded-2xl shadow-2xl border-4 border-red-400 ${!isJoined ? 'animate-pulse' : ''}">
-              <div class="flex justify-between items-start mb-2">
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs font-bold tracking-widest bg-red-800 text-red-200 px-2 py-1 rounded">緊急派遣</span>
-                  <span class="text-xs font-mono bg-black/40 px-2 py-0.5 rounded text-yellow-300">${m.createdAt}</span>
-                </div>
-                <button onclick="rejectMission(${m.id})" class="text-xs bg-red-900/80 hover:bg-black text-red-200 px-2.5 py-1 rounded-lg border border-red-400/50 font-bold">
-                  ✕ 拒絕/退單
-                </button>
-              </div>
-
-              <h1 class="text-3xl font-extrabold mb-1">${m.type}</h1>
-              <p class="text-xl font-bold text-yellow-300 mb-2">${m.location}</p>
-              <p class="text-sm text-red-100 mb-6">${m.detail || '無額外補充資訊'}</p>
-              
-              ${!isJoined ? `
-                <div>
-                  <button onclick="acceptMission(${m.id})" class="w-full py-4 bg-white text-red-600 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
-                    接受案件 (Accept)
+                  <button onclick="rejectMission(${m.id})" class="text-xs bg-red-900/80 hover:bg-black text-red-200 px-2.5 py-1 rounded-lg border border-red-400/50 font-bold">
+                    ✕ 拒絕/退單
                   </button>
                 </div>
-              ` : ''}
 
-              ${isJoined ? `
-                <div class="space-y-3">
-                  
-                  ${isAccepted ? `
-                    <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-lg rounded-xl shadow transition">
-                    我已到達現場 (Arrived)
+                <h1 class="text-3xl font-extrabold mb-1">${m.type}</h1>
+                <p class="text-xl font-bold text-yellow-300 mb-2">${m.location}</p>
+                <p class="text-sm text-red-100 mb-6">${m.detail || '無額外補充資訊'}</p>
+                
+                ${!isJoined ? `
+                  <div>
+                    <button onclick="acceptMission(${m.id})" class="w-full py-4 bg-white text-red-600 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+                      接受案件 (Accept)
                     </button>
-                  ` : `
-                    <div class="bg-green-800/80 text-green-200 text-xs font-bold p-2 rounded text-center">
-                    您已到達現場待命中
-                    </div>
-                  `}
+                  </div>
+                ` : ''}
 
-                  <!-- 即時案件對話框區 -->
-                  <div class="bg-gray-900/90 p-3 rounded-xl border border-red-400/60 space-y-2">
-                    <div class="text-xs font-bold text-yellow-300 flex justify-between items-center">
-                      <span>MSG</span>
+                ${isJoined ? `
+                  <div class="space-y-3">
+                    
+                    ${isAccepted ? `
+                      <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-lg rounded-xl shadow transition">
+                      我已到達現場 (Arrived)
+                      </button>
+                    ` : `
+                      <div class="bg-green-800/80 text-green-200 text-xs font-bold p-2 rounded text-center">
+                      您已到達現場待命中
+                      </div>
+                    `}
+
+                    <div class="bg-gray-900/90 p-3 rounded-xl border border-red-400/60 space-y-2">
+                      <div class="text-xs font-bold text-yellow-300 flex justify-between items-center">
+                        <span>MSG</span>
+                      </div>
+
+                      <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        ${chatListHtml}
+                      </div>
+
+                      <div class="flex space-x-2 pt-1">
+                        <input id="report_input_${m.id}" type="text" placeholder="輸入訊息..." class="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-yellow-400">
+                        <button onclick="submitReport(${m.id})" class="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-sm rounded-lg transition shadow whitespace-nowrap">
+                          傳送
+                        </button>
+                      </div>
                     </div>
 
-                    <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      ${chatListHtml}
-                    </div>
-
-                    <div class="flex space-x-2 pt-1">
-                      <input id="report_input_${m.id}" type="text" placeholder="輸入訊息..." class="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-yellow-400">
-                      <button onclick="submitReport(${m.id})" class="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-sm rounded-lg transition shadow whitespace-nowrap">
-                        傳送
+                    <div>
+                      <button onclick="leaveScene(${m.id})" class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white font-extrabold text-sm rounded-lg transition shadow">
+                      離開現場
                       </button>
                     </div>
+
                   </div>
+                ` : ''}
 
-                  <div>
-                    <button onclick="leaveScene(${m.id})" class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white font-extrabold text-sm rounded-lg transition shadow">
-                    離開現場
-                    </button>
-                  </div>
+              </div>
+            `;
+          }).join('');
 
-                </div>
-              ` : ''}
-
-            </div>
-          `;
-        }).join('');
-
-        if (hasNewUnaccepted && navigator.vibrate) {
-          navigator.vibrate([1000, 200, 1000, 200, 500, 100, 500, 100, 500]);
+          if (hasNewUnaccepted && navigator.vibrate) {
+            navigator.vibrate([1000, 200, 1000, 200, 500, 100, 500, 100, 500]);
+          }
+        } else {
+          stopVibration();
+          container.innerHTML = '';
+          standbyBox.classList.remove('hidden');
         }
-      } else {
-        stopVibration();
-        container.innerHTML = '';
-        standbyBox.classList.remove('hidden');
+      };
+
+      // 異常斷線時（例如 Vercel 10 秒斷連），2 秒後自動自動重連
+      evtSource.onerror = () => {
+        if (evtSource) {
+          evtSource.close();
+          setTimeout(connectSSE, 2000);
+        }
+      };
+    }
+
+    // 🆕 當畫面重新回前景或螢幕解鎖時，強效刷新
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isOnDuty) {
+        connectSSE();
+        reportStatus('On Duty');
       }
-    };
+    });
+
+    window.addEventListener('focus', () => {
+      if (isOnDuty) connectSSE();
+    });
 
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -303,6 +329,7 @@
         updateDutyUI();
         await setupWebPush(); 
         await reportStatus('On Duty');
+        connectSSE(); // 載入頁面時建立 SSE 連線
       }
     });
   </script>

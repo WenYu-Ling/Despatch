@@ -248,5 +248,10 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
+// 13. 每 15 秒向所有 SSE 用戶端發送 Ping，保持連線不被防火牆或 Vercel 強制中斷
+setInterval(() => {
+  sseClients.forEach(client => client.res.write(': ping\n\n'));
+}, 45000);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`派遣系統已於 http://localhost:${PORT} 啟動`));

@@ -93,14 +93,36 @@
 
   <script>
     let isEditMode = false;
+    let evtSource = null;
 
-    const evtSource = new EventSource('/api/stream');
-    evtSource.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.customLocations) renderLocations(data.customLocations);
-      if (data.studentStatus) renderStudents(data.studentStatus);
-      if (data.activeMissions) renderMissions(data.activeMissions);
-    };
+    // 🆕 自動連線與恢復機制
+    function connectSSE() {
+      if (evtSource) {
+        evtSource.close();
+      }
+
+      evtSource = new EventSource('/api/stream');
+
+      evtSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.customLocations) renderLocations(data.customLocations);
+        if (data.studentStatus) renderStudents(data.studentStatus);
+        if (data.activeMissions) renderMissions(data.activeMissions);
+      };
+
+      evtSource.onerror = () => {
+        if (evtSource) {
+          evtSource.close();
+          setTimeout(connectSSE, 2000);
+        }
+      };
+    }
+
+    connectSSE();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') connectSSE();
+    });
 
     function toggleEditMode() {
       isEditMode = !isEditMode;
@@ -167,7 +189,6 @@
       document.getElementById('locationDetail').value = '';
     }
 
-    // 衛保組發送聊天補充訊息
     async function sendAdminChat(missionId) {
       const input = document.getElementById(`admin_chat_input_${missionId}`);
       const message = input ? input.value.trim() : '';
@@ -218,7 +239,6 @@
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
         
-        // 渲染隊員動態紀錄
         const logsHtml = m.responseLogs.length > 0
           ? m.responseLogs.map(l => {
               let badgeStyle = 'bg-blue-900/60 text-blue-300';
@@ -244,7 +264,6 @@
             }).join('')
           : `<p class="text-xs text-gray-500 py-1">尚未有成員回應</p>`;
 
-        // 渲染對話廣播訊息
         const chatHtml = (m.chatMessages || []).length > 0
           ? m.chatMessages.map(msg => {
               const isAdmin = msg.role === 'admin';
@@ -276,7 +295,7 @@
               </div>
 
               <div class="flex flex-col items-end space-y-2">
-                <span class="px-3 py-1 rounded-full text-xs fㄏont-bold ${isClosed ? 'bg-gray-700 text-gray-400' : 'bg-red-600/30 text-red-300 border border-red-500'}">
+                <span class="px-3 py-1 rounded-full text-xs font-bold ${isClosed ? 'bg-gray-700 text-gray-400' : 'bg-red-600/30 text-red-300 border border-red-500'}">
                   ${m.status}
                 </span>
                 
@@ -358,7 +377,6 @@
             
             <div class="flex items-center space-x-2">
               <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeColor}">${displayStatus}</span>
-              <!-- 新增：手動刪除按鈕 -->
               <button onclick="removeStudent('${name}')" class="px-2 py-1 bg-red-900/60 hover:bg-red-700 text-red-300 hover:text-white rounded text-xs font-bold transition border border-red-700/50">
                 ✕
               </button>
@@ -368,7 +386,6 @@
       }).join('');
     }
 
-    // 新增：呼叫後端刪除成員的函式
     async function removeStudent(name) {
       if (confirm(`確定要將成員「${name}」從動態牆移除嗎？`)) {
         await fetch('/api/student/remove', {

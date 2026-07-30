@@ -8,8 +8,8 @@ self.addEventListener('push', function(event) {
 
   const options = {
     body: data.body,
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: 'icon/icon-192.png',
+    badge: 'icon/icon-192.png',
     
     // 高頻急救震動節奏
     vibrate: [1000, 200, 1000, 200, 500, 100, 500, 100, 500],
