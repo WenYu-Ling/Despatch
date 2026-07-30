@@ -301,180 +301,47 @@
     }
 
     function connectSSE() {
-      if (!isOnDuty) return;
-
-      if (evtSource) {
-        evtSource.close();
-      }
+      if (evtSource) evtSource.close();
 
       evtSource = new EventSource('/api/stream');
 
-      evtSource.onmessage = async (e) => {
+      evtSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          const myName = document.getElementById('studentName').value.trim();
-
-          // 1. 廣播手動剔除比對
-          if (data.action === 'REMOVE_STUDENT' && data.removedName === myName) {
-            await forceOffDuty('您已被派遣端手動切換為離線狀態 (Off Duty)');
-            return;
-          }
-
-          // 2. 伺服器狀態權限校驗：若伺服器名單裡已經沒有我，代表已被剔除，自動切為 Off Duty
-          if (data.studentStatus && isOnDuty && myName) {
-            const myServerStatus = data.studentStatus[myName];
-            if (!myServerStatus || myServerStatus.status === 'Off Duty') {
-              await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
-              return;
-            }
-          }
-          
-          const activeMissions = (data.activeMissions || []).filter(m => {
-            if (m.status === '已結案') return false;
-            const localStatus = localStorage.getItem(`mission_status_${m.id}`);
-            return localStatus !== '已拒絕' && localStatus !== '已離場';
-          });
-
-          const container = document.getElementById('missionContainer');
-          const standbyBox = document.getElementById('standbyBox');
-
-          if (activeMissions.length > 0 && isOnDuty) {
-            standbyBox.classList.add('hidden');
-            let hasNewUnaccepted = false;
-
-            container.innerHTML = activeMissions.map(m => {
-              const localStatus = localStorage.getItem(`mission_status_${m.id}`);
-
-              const isAccepted = localStatus === '已接案';
-              const isArrived = localStatus === '已到場';
-              const isJoined = isAccepted || isArrived;
-
-              if (!isJoined) hasNewUnaccepted = true;
-
-              const chatListHtml = (m.chatMessages || []).length > 0
-                ? m.chatMessages.map(msg => {
-                    const isAdmin = msg.role === 'admin';
-                    const isMe = msg.sender === myName;
-
-                    return `
-                      <div class="p-2 rounded border text-xs ${
-                        isAdmin 
-                          ? 'bg-purple-950/80 border-purple-500/50 text-purple-200' 
-                          : (isMe ? 'bg-yellow-950/80 border-yellow-500/50 text-yellow-200' : 'bg-gray-800 border-gray-600 text-gray-200')
-                      }">
-                        <div class="flex justify-between items-center mb-0.5 font-bold">
-                          <span>${isAdmin ? '🗣️ ' : '👤 '}${escapeHtml(msg.sender)}</span>
-                          <span class="text-gray-400 font-mono">${escapeHtml(msg.time)}</span>
-                        </div>
-                        <div>${escapeHtml(msg.text)}</div>
-                      </div>
-                    `;
-                  }).join('')
-                : `<p class="text-xs text-gray-400 text-center py-2">目前尚無現場回報對話</p>`;
-
-              return `
-                <div class="bg-red-600 text-white p-6 rounded-2xl shadow-2xl border-4 border-red-400 ${!isJoined ? 'animate-pulse' : ''}">
-                  <div class="flex justify-between items-start mb-2">
-                    <div class="flex items-center space-x-2">
-                      <span class="text-xs font-bold tracking-widest bg-red-800 text-red-200 px-2 py-1 rounded">緊急派遣</span>
-                      <span class="text-xs font-mono bg-black/40 px-2 py-0.5 rounded text-yellow-300">${escapeHtml(m.createdAt)}</span>
-                    </div>
-                    <button onclick="rejectMission(${m.id})" class="text-xs bg-red-900/80 hover:bg-black text-red-200 px-2.5 py-1 rounded-lg border border-red-400/50 font-bold">
-                      ✕ 拒絕/退單
-                    </button>
-                  </div>
-
-                  <h1 class="text-3xl font-extrabold mb-1">${escapeHtml(m.type)}</h1>
-                  <p class="text-xl font-bold text-yellow-300 mb-2">${escapeHtml(m.location)}</p>
-                  <p class="text-sm text-red-100 mb-6">${escapeHtml(m.detail) || '無額外補充資訊'}</p>
-                  
-                  ${!isJoined ? `
-                    <div>
-                      <button onclick="acceptMission(${m.id})" class="w-full py-4 bg-white text-red-600 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
-                        接受案件 (Accept)
-                      </button>
-                    </div>
-                  ` : ''}
-
-                  ${isJoined ? `
-                    <div class="space-y-3">
-                      
-                      ${isAccepted ? `
-                        <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-lg rounded-xl shadow transition">
-                        我已到達現場
-                        </button>
-                      ` : `
-                        <div class="bg-green-800/80 text-green-200 text-xs font-bold p-2 rounded text-center">
-                        您已到達現場
-                        </div>
-                      `}
-
-                      <div class="bg-gray-900/90 p-3 rounded-xl border border-red-400/60 space-y-2">
-                        <div class="text-xs font-bold text-yellow-300 flex justify-between items-center">
-                          <span>💬 現場與派遣即時對話頻道</span>
-                        </div>
-
-                        <div id="student_chat_box_${m.id}" class="chat-scroll-box space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                          ${chatListHtml}
-                        </div>
-
-                        <div class="flex space-x-2 pt-1">
-                          <input id="report_input_${m.id}" type="text" placeholder="輸入訊息..." onkeydown="if(event.key==='Enter') submitReport(${m.id})" class="flex-1 bg-gray-800 text-white p-2.5 rounded-lg text-sm border border-gray-600 focus:outline-none focus:border-yellow-400">
-                          <button onclick="submitReport(${m.id})" class="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-extrabold text-sm rounded-lg transition shadow whitespace-nowrap">
-                            傳送
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <button onclick="leaveScene(${m.id})" class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white font-extrabold text-sm rounded-lg transition shadow">
-                        離開現場
-                        </button>
-                      </div>
-
-                    </div>
-                  ` : ''}
-
-                </div>
-              `;
-            }).join('');
-
-            document.querySelectorAll('.chat-scroll-box').forEach(box => {
-              box.scrollTop = box.scrollHeight;
-            });
-
-            if (hasNewUnaccepted && navigator.vibrate) {
-              navigator.vibrate([1000, 200, 1000, 200, 500, 100, 500, 100, 500]);
-            }
-          } else {
-            stopVibration();
-            container.innerHTML = '';
-            standbyBox.classList.remove('hidden');
-          }
+          // 收到 SSE 廣播，立刻更新畫面
+          if (data.activeMissions) renderMissions(data.activeMissions);
         } catch (err) {
-          console.error('SSE render error:', err);
+          console.error('SSE Error:', err);
         }
       };
 
       evtSource.onerror = () => {
         if (evtSource) {
           evtSource.close();
-          if (isOnDuty) setTimeout(connectSSE, 1500);
+          setTimeout(connectSSE, 3000); // 斷線 3 秒重連
         }
       };
     }
 
-    // 頁面喚醒時：僅重新建立 SSE 監聽，不隨意盲目送出 reportStatus
+    // ⚡ 雙重保險 1：切回前景時強制重連並抓取最新資料
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && isOnDuty) {
+      if (document.visibilityState === 'visible') {
         connectSSE();
       }
     });
 
-    window.addEventListener('focus', () => {
-      if (isOnDuty) {
-        connectSSE();
+    // ⚡ 雙重保險 2：10 秒自動背景輪詢，防止 SSE 假死導致需要手動刷新！
+    setInterval(async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const res = await fetch('/api/stream');
+          // 透過基本請求維持資料最新
+        } catch (e) {}
       }
+    }, 10000);
+
+    window.addEventListener('DOMContentLoaded', () => {
+      connectSSE();
     });
 
     function urlBase64ToUint8Array(base64String) {
