@@ -261,39 +261,52 @@ app.get('/api/stream', async (req, res) => {
 });
 
 // 11. 手動刪除/關閉成員 API
+// 手動刪除/關閉成員 API
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
     const data = await getSystemData();
     
     if (data.studentStatus[name]) {
-      data.studentStatus[name].status = 'Off Duty';
-      data.studentStatus[name].updatedAt = getTimeToMinute();
+      // ⚡ 關鍵修復：
+      // 如果對方已經是 Off Duty，按 ✕ 就是要「完全剔除名單」
+      if (data.studentStatus[name].status === 'Off Duty') {
+        delete data.studentStatus[name]; // 徹底從物件中刪除 Key
+      } else {
+        // 如果對方是 On Duty，按 ✕ 是強制把他切換成 Off Duty
+        data.studentStatus[name].status = 'Off Duty';
+        data.studentStatus[name].updatedAt = getTimeToMinute();
+      }
     }
     
+    // 尋找該成員的 Web Push 訂閱資料並發送通知
     const targetSub = data.subscriptions.find(sub => sub.name === name);
     if (targetSub) {
       const payload = JSON.stringify({
         title: '【勤務狀態變更】',
-        body: '派遣端已手動將您的狀態切換為 Off Duty (離線)。',
+        body: '派遣端已手動更新您的勤務狀態。',
         url: '/student.html'
       });
-      
       webpush.sendNotification(targetSub, payload).catch(err => console.log('Push error:', err));
     }
 
+    // 更新 Redis 與 快取
     await Promise.all([
       redis.set('studentStatus', data.studentStatus),
       redis.set('subscriptions', data.subscriptions)
     ]);
 
+    // ⚡ 發送 SSE 廣播給所有派遣端與手機，同步更新動態牆
     await broadcastSSE({ 
       action: 'REMOVE_STUDENT', 
       removedName: name,
       studentStatus: data.studentStatus
     });
+
+    return res.json({ success: true, studentStatus: data.studentStatus });
   }
-  res.json({ success: true, studentStatus: cache.studentStatus });
+  
+  res.json({ success: false });
 });
 
 // 12. 心跳 Ping
