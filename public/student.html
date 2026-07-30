@@ -57,7 +57,7 @@
   <div id="customAlertModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
-        <span>⚠️</span>
+        <span>📢</span>
         <span>校園急救派遣系統</span>
       </div>
       <p id="customAlertMessage" class="text-gray-200 text-sm leading-relaxed"></p>
@@ -72,7 +72,7 @@
   <script>
     let isOnDuty = false;
     let evtSource = null;
-    let lastUserActionTime = 0;
+    let lastUserActionTime = 0; // 記錄使用者點擊切換狀態的時間
 
     function customConfirm(message) {
       return new Promise((resolve) => {
@@ -163,35 +163,32 @@
       const name = document.getElementById('studentName').value.trim();
       if (!name) return await customAlert('請先輸入姓名！');
 
+      saveName();
       isOnDuty = !isOnDuty;
       lastUserActionTime = Date.now(); 
       localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
       updateDutyUI();
 
       if (isOnDuty) {
-        await reportStatus('On Duty');
+        // 先送出狀態，確認派遣端能立刻收到
+        try {
+          await reportStatus('On Duty');
+        } catch(e) {
+          console.error(e);
+        }
         connectSSE();
 
-        setupWebPush().catch(err => console.error('WebPush init error:', err));
+        // 靜態呼叫背景 WebPush，即使失敗也不影響上線狀態
+        setupWebPush().catch(err => console.log('Push skipped:', err));
       } else {
-        await reportStatus('Off Duty');
+        try {
+          await reportStatus('Off Duty');
+        } catch(e) {
+          console.error(e);
+        }
         await forceOffDuty();
       }
     }
-
-  isOnDuty = !isOnDuty;
-  lastUserActionTime = Date.now();
-  localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
-  updateDutyUI();
-
-  if (isOnDuty) {
-    await setupWebPush();
-    await reportStatus('On Duty');
-    connectSSE();
-  } else {
-    await reportStatus('Off Duty');
-    await forceOffDuty();
-  }
 
     async function acceptMission(missionId) {
       stopVibration();
@@ -239,7 +236,7 @@
       }
     }
 
-      async function setupWebPush() {
+    async function setupWebPush() {
       const name = document.getElementById('studentName').value.trim();
       if (!name) return;
 
@@ -264,7 +261,7 @@
             });
           }
         } catch (err) {
-          console.log('Web Push 註冊未完成或不受支援 (不影響上線狀態):', err);
+          console.log('Push Setup fail:', err);
         }
       }
     }
@@ -301,12 +298,14 @@
           return;
         }
 
-        if (data.studentStatus && isOnDuty && myName && (Date.now() - lastUserActionTime > 3000)) {
-        const myServerStatus = data.studentStatus[myName];
-        if (!myServerStatus || myServerStatus.status === 'Off Duty') {
-        await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
-        return;
-        }}
+        // 僅在點擊切換超過 4 秒後，才進行伺服器狀態校驗，避免非同步快取延遲誤判定
+        if (data.studentStatus && isOnDuty && myName && (Date.now() - lastUserActionTime > 4000)) {
+          const myServerStatus = data.studentStatus[myName];
+          if (!myServerStatus || myServerStatus.status === 'Off Duty') {
+            await forceOffDuty('您已被派遣端切換為離線狀態 (Off Duty)');
+            return;
+          }
+        }
         
         const activeMissions = (data.activeMissions || []).filter(m => {
           if (m.status === '已結案') return false;
@@ -418,7 +417,6 @@
             `;
           }).join('');
 
-          // 🆕 渲染完畫面後，將隊員端的對話框滑軌自動拉至最底部
           document.querySelectorAll('.chat-scroll-box').forEach(box => {
             box.scrollTop = box.scrollHeight;
           });
@@ -469,11 +467,11 @@
       if (savedDuty === 'true') {
         isOnDuty = true;
         updateDutyUI();
-        await setupWebPush(); 
         await reportStatus('On Duty');
         connectSSE();
+        setupWebPush().catch(err => console.log('Push skipped:', err));
       }
     });
   </script>
 </body>
-</html>`
+</html>
