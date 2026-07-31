@@ -14,7 +14,6 @@
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-6">
 
-  <!-- 頂部狀態列 -->
   <header class="flex justify-between items-center bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700 shadow-xl">
     <div class="flex items-center space-x-3">
       <h1 class="text-xl font-extrabold tracking-wide text-red-500">校園急救派遣</h1>
@@ -33,7 +32,6 @@
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="lg:col-span-2 space-y-6">
 
-      <!-- 1. 選擇或輸入案件地點 -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-sm font-bold text-gray-400 tracking-wider">1. 選擇或輸入案件地點</h2>
@@ -57,7 +55,6 @@
         </div>
       </div>
 
-      <!-- 2. 選擇案件類型 -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">2. 選擇案件類型 (點擊按鈕即刻派遣)</h2>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -76,7 +73,6 @@
         </div>
       </div>
 
-      <!-- 3. 案件列表與即時時間動態 -->
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">3. 案件列表與即時時間動態</h2>
         <div id="missionLog" class="space-y-4">
@@ -86,7 +82,6 @@
 
     </div>
 
-    <!-- 右側動態牆 -->
     <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 flex flex-col h-max">
       <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">成員即時動態牆</h2>
       <div id="studentList" class="space-y-3 divide-y divide-gray-700/50">
@@ -96,7 +91,6 @@
 
   </div>
 
-  <!-- 自訂彈窗 Confirm -->
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -111,7 +105,6 @@
     </div>
   </div>
 
-  <!-- 自訂彈窗 Alert -->
   <div id="customAlertModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -125,7 +118,6 @@
     </div>
   </div>
 
-  <!-- 自訂彈窗 Prompt -->
   <div id="customPromptModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-blue-400 font-extrabold text-lg">
@@ -265,6 +257,12 @@
       };
     }
 
+    function wakeupSSE() {
+      if (!evtSource || evtSource.readyState === EventSource.CLOSED) {
+        connectSSE();
+      }
+    }
+
     function renderLocations(locations) {
       const wall = document.getElementById('locationWall');
       wall.innerHTML = locations.map(loc => `
@@ -309,6 +307,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ location: cleanLoc })
         });
+        wakeupSSE();
       }
     }
 
@@ -322,6 +321,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ location: loc })
         });
+        wakeupSSE();
       }
     }
 
@@ -345,6 +345,7 @@
 
         locationInput.value = '';
         detailInput.value = '';
+        wakeupSSE();
       } finally {
         if (btnEl) setTimeout(() => { btnEl.disabled = false; }, 1000);
       }
@@ -354,9 +355,12 @@
       const inputId = `admin_chat_input_${missionId}`;
       const input = document.getElementById(inputId);
       if (!input) return;
+
       const message = input.value.trim();
       if (!message) return;
+
       input.value = '';
+
       const targetMission = cachedMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.chatMessages) targetMission.chatMessages = [];
@@ -380,6 +384,7 @@
         if (!result.success) {
           await customAlert('訊息發送失敗，請再試一次');
         }
+        wakeupSSE();
       } catch (err) {
         console.error('Send message error:', err);
         await customAlert('網路連線異常，訊息發送失敗');
@@ -393,6 +398,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id })
         });
+        wakeupSSE();
       }
     }
 
@@ -403,12 +409,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id })
         });
+        wakeupSSE();
       }
     }
 
     async function clearAllMissions() {
       if (await customConfirm('確定要清除所有歷史案件紀錄嗎？')) {
         await fetch('/api/missions/clear', { method: 'POST' });
+        wakeupSSE();
       }
     }
 
@@ -427,9 +435,11 @@
         focusedInputId = activeEl.id;
         currentDraftText = activeEl.value;
       }
+
       if (!forceRender && focusedInputId) {
         return;
       }
+
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
         
@@ -635,6 +645,7 @@
           if (result.success && result.studentStatus) {
             renderStudents(result.studentStatus);
           }
+          wakeupSSE();
         } catch (err) {
           console.error('Remove student error:', err);
           await customAlert('操作失敗，請再試一次。');
