@@ -45,13 +45,14 @@
         </ul>
       </div>
     </div>
-
   </div>
+
   <div class="flex-none pt-2">
     <p class="text-center text-[11px] text-gray-500 border-t border-gray-800/80 pt-2">
       校園急救即時派遣系統 • PWA Mobile
     </p>
   </div>
+
   <div id="customConfirmModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
       <div class="flex items-center space-x-2 text-yellow-400 font-extrabold text-lg">
@@ -85,7 +86,6 @@
     </div>
   </div>
 
-</body>
   <script>
     let isOnDuty = false;
     let evtSource = null;
@@ -385,6 +385,7 @@
 
       if (standbyBox) standbyBox.classList.add('hidden');
 
+      // ⚡ 暫存打字草稿與 Focus 狀態
       const activeEl = document.activeElement;
       let focusedInputId = null;
       let currentDraftText = '';
@@ -397,6 +398,7 @@
       container.innerHTML = visibleMissions.map(m => {
         const myStatus = localStorage.getItem(`mission_status_${m.id}`) || '未回應';
 
+        // ⚡ 核心修正：乾淨正確的 HTML 結構，移除導致爆框的重複 </div><div> 標籤
         const chatHtml = (m.chatMessages || []).map(msg => {
           const isAdmin = msg.role === 'admin';
           const isMe = !isAdmin && msg.sender === myName;
@@ -409,7 +411,7 @@
 
           const senderName = isAdmin 
             ? '🗣️ 派遣端' 
-            : (isMe ? `👤 ${escapeHtml(msg.sender)}` : `👤 ${escapeHtml(msg.sender)}`);
+            : (isMe ? `👤 ${escapeHtml(msg.sender)} (我)` : `👤 ${escapeHtml(msg.sender)}`);
 
           return `
             <div class="p-2 rounded border text-xs ${bgStyle}">
@@ -417,8 +419,7 @@
                 <span>${senderName}</span>
                 <span class="text-gray-400 font-mono text-[10px]">${msg.time}</span>
               </div>
-              <div class="break-words whitespace-pre-wrap leading-relaxed">${escapeHtml(msg.text)}</div></div>
-              <div>${escapeHtml(msg.text)}</div>
+              <div class="break-all whitespace-pre-wrap leading-relaxed">${escapeHtml(msg.text)}</div>
             </div>
           `;
         }).join('');
@@ -480,6 +481,7 @@
         box.scrollTop = box.scrollHeight;
       });
 
+      // ⚡ 還原打字草稿與 Focus 焦點
       if (focusedInputId) {
         const targetInput = document.getElementById(focusedInputId);
         if (targetInput) {
