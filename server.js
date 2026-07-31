@@ -26,6 +26,8 @@ let cache = {
   subscriptions: null
 };
 
+let statusUpdateQueue = Promise.resolve();
+
 function generateUniqueId() {
   return `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 }
@@ -116,12 +118,15 @@ app.post('/api/dispatch', async (req, res) => {
     responseLogs: [], chatMessages: []
   };
 
-  const data = await getSystemData(true);
-  data.activeMissions.unshift(mission);
-  cache.activeMissions = data.activeMissions;
-  
-  await redis.set('activeMissions', data.activeMissions);
-  await broadcastSSE({ action: 'UPDATE_ALL' });
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    const data = await getSystemData(true);
+    data.activeMissions.unshift(mission);
+    cache.activeMissions = data.activeMissions;
+    await redis.set('activeMissions', data.activeMissions);
+    await broadcastSSE({ action: 'UPDATE_ALL' });
+  });
+
+  await statusUpdateQueue;
 
   const payload = JSON.stringify({
     title: `【緊急派遣 ${nowStr}】${type}`,
@@ -129,6 +134,7 @@ app.post('/api/dispatch', async (req, res) => {
     url: '/student.html'
   });
 
+  const data = await getSystemData();
   const targetSubscriptions = data.subscriptions.filter(sub => {
     const statusObj = data.studentStatus[sub.name];
     return statusObj && statusObj.status !== 'Off Duty';
@@ -153,109 +159,131 @@ app.post('/api/student/status', async (req, res) => {
   if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
 
   const nowStr = getTimeToMinute();
-  const data = await getSystemData(true);
-  let hasChanged = false;
 
-  if (status === '現場訊息') {
-    if (missionId) {
-      const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
-      if (targetMission) {
-        if (!targetMission.chatMessages) targetMission.chatMessages = [];
-        targetMission.chatMessages.push({ id: generateUniqueId(), sender: name, role: 'student', text: reportText || '', time: nowStr });
-        cache.activeMissions = data.activeMissions;
-        await redis.set('activeMissions', data.activeMissions);
-        hasChanged = true;
-      }
-    }
-  } else {
-    const newStatus = (status === 'Off Duty') ? 'Off Duty' : 'On Duty';
-    const currentObj = data.studentStatus[name];
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    const data = await getSystemData(true);
+    let hasChanged = false;
 
-    if (newStatus === 'Off Duty') {
-      data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
-      cache.subscriptions = data.subscriptions;
-      await redis.set('subscriptions', data.subscriptions);
-    }
-
-    if (!currentObj || currentObj.status !== newStatus) {
-      data.studentStatus[name] = { status: newStatus, updatedAt: nowStr, timestamp: Date.now() };
-      cache.studentStatus = data.studentStatus;
-      await redis.set('studentStatus', data.studentStatus);
-      hasChanged = true;
-    }
-
-    if (missionId) {
-      const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
-      if (targetMission) {
-        if (!targetMission.responseLogs) targetMission.responseLogs = [];
-
-        targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
-
-        const studentLatestStatus = {};
-        targetMission.responseLogs.forEach(l => {
-          studentLatestStatus[l.name] = l.status;
-        });
-
-        const participants = Object.keys(studentLatestStatus);
-        const isAllLeft = participants.length > 0 && participants.every(n => studentLatestStatus[n] === '已離場');
-
-        if (isAllLeft) {
-          targetMission.status = '已離場';
-        } else if (status === '已到場') {
-          targetMission.status = '已到場';
-        } else if (status === '已接案' && targetMission.status === '派遣中') {
-          targetMission.status = '已接案';
+    if (status === '現場訊息') {
+      if (missionId) {
+        const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
+        if (targetMission) {
+          if (!targetMission.chatMessages) targetMission.chatMessages = [];
+          targetMission.chatMessages.push({ id: generateUniqueId(), sender: name, role: 'student', text: reportText || '', time: nowStr });
+          cache.activeMissions = data.activeMissions;
+          await redis.set('activeMissions', data.activeMissions);
+          hasChanged = true;
         }
-        
-        cache.activeMissions = data.activeMissions;
-        await redis.set('activeMissions', data.activeMissions);
+      }
+    } else {
+      const newStatus = (status === 'Off Duty') ? 'Off Duty' : 'On Duty';
+      const currentObj = data.studentStatus[name];
+
+      if (newStatus === 'Off Duty') {
+        data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
+        cache.subscriptions = data.subscriptions;
+        await redis.set('subscriptions', data.subscriptions);
+      }
+
+      if (!currentObj || currentObj.status !== newStatus) {
+        data.studentStatus[name] = { status: newStatus, updatedAt: nowStr, timestamp: Date.now() };
+        cache.studentStatus = data.studentStatus;
+        await redis.set('studentStatus', data.studentStatus);
         hasChanged = true;
       }
-    }
-  }
 
-  if (hasChanged) await broadcastSSE({ action: 'UPDATE_ALL' });
+      if (missionId) {
+        const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
+        if (targetMission) {
+          if (!targetMission.responseLogs) targetMission.responseLogs = [];
+
+          targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
+
+          const studentLatestStatus = {};
+          targetMission.responseLogs.forEach(l => {
+            studentLatestStatus[l.name] = l.status;
+          });
+
+          const participants = Object.keys(studentLatestStatus);
+          const isAllLeft = participants.length > 0 && participants.every(n => studentLatestStatus[n] === '已離場');
+
+          if (isAllLeft) {
+            targetMission.status = '已離場';
+          } else if (status === '已到場') {
+            targetMission.status = '已到場';
+          } else if (status === '已接案' && targetMission.status === '派遣中') {
+            targetMission.status = '已接案';
+          }
+          
+          cache.activeMissions = data.activeMissions;
+          await redis.set('activeMissions', data.activeMissions);
+          hasChanged = true;
+        }
+      }
+    }
+
+    if (hasChanged) await broadcastSSE({ action: 'UPDATE_ALL' });
+  });
+
+  await statusUpdateQueue;
   res.json({ success: true });
 });
 
 app.post('/api/missions/chat', async (req, res) => {
   const { missionId, message } = req.body;
-  const data = await getSystemData(true);
-  const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
-  if (targetMission && message) {
-    if (!targetMission.chatMessages) targetMission.chatMessages = [];
-    targetMission.chatMessages.push({ id: generateUniqueId(), sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
-    cache.activeMissions = data.activeMissions;
-    await redis.set('activeMissions', data.activeMissions);
-    await broadcastSSE({ action: 'UPDATE_ALL' });
-  }
+  
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    const data = await getSystemData(true);
+    const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
+    if (targetMission && message) {
+      if (!targetMission.chatMessages) targetMission.chatMessages = [];
+      targetMission.chatMessages.push({ id: generateUniqueId(), sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
+      cache.activeMissions = data.activeMissions;
+      await redis.set('activeMissions', data.activeMissions);
+      await broadcastSSE({ action: 'UPDATE_ALL' });
+    }
+  });
+
+  await statusUpdateQueue;
   res.json({ success: true });
 });
 
 app.post('/api/missions/close-single', async (req, res) => {
-  const data = await getSystemData(true);
-  const mission = data.activeMissions.find(m => m.id === req.body.id);
-  if (mission) {
-    mission.status = '已結案';
-    mission.closedAt = getTimeToMinute();
-    await redis.set('activeMissions', data.activeMissions);
-    await broadcastSSE({ action: 'UPDATE_ALL' });
-  }
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    const data = await getSystemData(true);
+    const mission = data.activeMissions.find(m => m.id === req.body.id);
+    if (mission) {
+      mission.status = '已結案';
+      mission.closedAt = getTimeToMinute();
+      await redis.set('activeMissions', data.activeMissions);
+      await broadcastSSE({ action: 'UPDATE_ALL' });
+    }
+  });
+
+  await statusUpdateQueue;
   res.json({ success: true });
 });
 
 app.post('/api/missions/delete-single', async (req, res) => {
-  const data = await getSystemData(true);
-  cache.activeMissions = data.activeMissions.filter(m => m.id !== req.body.id);
-  await redis.set('activeMissions', cache.activeMissions);
-  await broadcastSSE({ action: 'UPDATE_ALL' });
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    const data = await getSystemData(true);
+    cache.activeMissions = data.activeMissions.filter(m => m.id !== req.body.id);
+    await redis.set('activeMissions', cache.activeMissions);
+    await broadcastSSE({ action: 'UPDATE_ALL' });
+  });
+
+  await statusUpdateQueue;
   res.json({ success: true });
 });
 
 app.post('/api/missions/clear', async (req, res) => {
-  cache.activeMissions = [];
-  await redis.set('activeMissions', []);
-  await broadcastSSE({ action: 'UPDATE_ALL' });
+  statusUpdateQueue = statusUpdateQueue.then(async () => {
+    cache.activeMissions = [];
+    await redis.set('activeMissions', []);
+    await broadcastSSE({ action: 'UPDATE_ALL' });
+  });
+
+  await statusUpdateQueue;
   res.json({ success: true });
 });
 
