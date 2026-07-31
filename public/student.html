@@ -417,6 +417,7 @@
                 <span>${senderName}</span>
                 <span class="text-gray-400 font-mono text-[10px]">${msg.time}</span>
               </div>
+              <div class="break-words whitespace-pre-wrap leading-relaxed">${escapeHtml(msg.text)}</div></div>
               <div>${escapeHtml(msg.text)}</div>
             </div>
           `;
