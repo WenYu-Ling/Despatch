@@ -394,6 +394,7 @@
         log.innerHTML = `<p class="text-gray-500 text-sm">目前無處理中案件</p>`;
         return;
       }
+      const currentFocusedId = document.activeElement ? document.activeElement.id : null;
 
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
@@ -525,7 +526,12 @@
 
                 ${!isClosed ? `
                   <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
-                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." onfocus="activeFocusedInputId='admin_chat_input_${m.id}'" onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
+                    <!-- ⚡ 關鍵修復：新增 onblur 當失焦時自動清除 activeFocusedInputId -->
+                    <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." 
+                           onfocus="activeFocusedInputId='admin_chat_input_${m.id}'" 
+                           onblur="if(activeFocusedInputId==='admin_chat_input_${m.id}') activeFocusedInputId=null" 
+                           onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" 
+                           class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
                     <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
                       發送
                     </button>
@@ -546,12 +552,11 @@
         box.scrollTop = box.scrollHeight;
       });
 
-      if (activeFocusedInputId) {
+      if (activeFocusedInputId && currentFocusedId === activeFocusedInputId) {
         const focusedEl = document.getElementById(activeFocusedInputId);
         if (focusedEl) focusedEl.focus();
       }
     }
-
     function renderStudents(students) {
       const list = document.getElementById('studentList');
       const keys = Object.keys(students);
