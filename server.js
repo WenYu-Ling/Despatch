@@ -26,6 +26,10 @@ let cache = {
   subscriptions: null
 };
 
+function generateUniqueId() {
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+}
+
 async function getSystemData(forceRefresh = false) {
   if (forceRefresh || !cache.activeMissions || !cache.studentStatus) {
     const [missions, status, locations, subs] = await Promise.all([
@@ -73,7 +77,7 @@ app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapid
 app.post('/api/subscribe', async (req, res) => {
   const { subscription, name } = req.body;
   if (subscription && subscription.endpoint && name) {
-    const data = await getSystemData();
+    const data = await getSystemData(true);
     let subscriptions = data.subscriptions;
     
     const exists = subscriptions.some(sub => sub.name === name && sub.endpoint === subscription.endpoint);
@@ -112,7 +116,7 @@ app.post('/api/dispatch', async (req, res) => {
     responseLogs: [], chatMessages: []
   };
 
-  const data = await getSystemData();
+  const data = await getSystemData(true);
   data.activeMissions.unshift(mission);
   cache.activeMissions = data.activeMissions;
   
@@ -157,7 +161,7 @@ app.post('/api/student/status', async (req, res) => {
       const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.chatMessages) targetMission.chatMessages = [];
-        targetMission.chatMessages.push({ sender: name, role: 'student', text: reportText || '', time: nowStr });
+        targetMission.chatMessages.push({ id: generateUniqueId(), sender: name, role: 'student', text: reportText || '', time: nowStr });
         cache.activeMissions = data.activeMissions;
         await redis.set('activeMissions', data.activeMissions);
         hasChanged = true;
@@ -185,9 +189,12 @@ app.post('/api/student/status', async (req, res) => {
       if (targetMission) {
         if (!targetMission.responseLogs) targetMission.responseLogs = [];
 
-        const lastLog = targetMission.responseLogs[targetMission.responseLogs.length - 1];
-        if (!lastLog || lastLog.name !== name || lastLog.status !== status) {
-          targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
+        const isDuplicate = targetMission.responseLogs.some(
+          l => l.name === name && l.status === status && (Date.now() - Number(l.id.split('_')[0]) < 1000)
+        );
+
+        if (!isDuplicate) {
+          targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
           if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
           else if (status === '已到場') targetMission.status = '已到場';
           cache.activeMissions = data.activeMissions;
@@ -208,7 +215,7 @@ app.post('/api/missions/chat', async (req, res) => {
   const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
   if (targetMission && message) {
     if (!targetMission.chatMessages) targetMission.chatMessages = [];
-    targetMission.chatMessages.push({ sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
+    targetMission.chatMessages.push({ id: generateUniqueId(), sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
     cache.activeMissions = data.activeMissions;
     await redis.set('activeMissions', data.activeMissions);
     await broadcastSSE({ action: 'UPDATE_ALL' });
@@ -217,7 +224,7 @@ app.post('/api/missions/chat', async (req, res) => {
 });
 
 app.post('/api/missions/close-single', async (req, res) => {
-  const data = await getSystemData();
+  const data = await getSystemData(true);
   const mission = data.activeMissions.find(m => m.id === req.body.id);
   if (mission) {
     mission.status = '已結案';
@@ -229,7 +236,7 @@ app.post('/api/missions/close-single', async (req, res) => {
 });
 
 app.post('/api/missions/delete-single', async (req, res) => {
-  const data = await getSystemData();
+  const data = await getSystemData(true);
   cache.activeMissions = data.activeMissions.filter(m => m.id !== req.body.id);
   await redis.set('activeMissions', cache.activeMissions);
   await broadcastSSE({ action: 'UPDATE_ALL' });
@@ -251,7 +258,7 @@ app.get('/api/locations', async (req, res) => {
 app.post('/api/locations', async (req, res) => {
   const { location } = req.body;
   if (location) {
-    const data = await getSystemData();
+    const data = await getSystemData(true);
     if (!data.customLocations.includes(location)) {
       data.customLocations.push(location);
       cache.customLocations = data.customLocations;
@@ -265,7 +272,7 @@ app.post('/api/locations', async (req, res) => {
 app.delete('/api/locations', async (req, res) => {
   const { location } = req.body;
   if (location) {
-    const data = await getSystemData();
+    const data = await getSystemData(true);
     data.customLocations = data.customLocations.filter(l => l !== location);
     cache.customLocations = data.customLocations;
     await redis.set('customLocations', data.customLocations);
@@ -279,7 +286,7 @@ app.get('/api/stream', async (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const clientId = Date.now();
+  const clientId = generateUniqueId();
   sseClients.push({ id: clientId, res });
 
   const data = await getSystemData(true);
@@ -293,7 +300,7 @@ app.get('/api/stream', async (req, res) => {
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
-    const data = await getSystemData();
+    const data = await getSystemData(true);
     
     if (data.studentStatus[name]) {
       if (data.studentStatus[name].status === 'Off Duty') {
