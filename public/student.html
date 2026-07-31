@@ -18,7 +18,7 @@
       <span class="text-xs text-gray-400 block">成員</span>
       <input id="studentName" type="text" placeholder="輸入姓名" class="bg-transparent font-bold text-lg text-white border-b border-gray-600 focus:outline-none focus:border-red-500 w-32" onchange="saveName()">
     </div>
-    <button id="dutyBtn" onclick="toggleDuty()" class="px-5 py-2.5 rounded-lg font-bold text-sm bg-gray-700 text-gray-300">
+    <button id="dutyBtn" onclick="toggleDuty(this)" class="px-5 py-2.5 rounded-lg font-bold text-sm bg-gray-700 text-gray-300">
       Off Duty (離線)
     </button>
   </div>
@@ -83,7 +83,7 @@
   <script>
     let isOnDuty = false;
     let evtSource = null;
-    let lastUserActionTime = 0;
+    let cachedMissions = [];
 
     function escapeHtml(str) {
       if (!str) return '';
@@ -146,11 +146,7 @@
       if (isOnDuty) {
         const name = document.getElementById('studentName').value.trim();
         if (name) {
-          try {
-            await reportStatus('On Duty');
-          } catch (e) {
-            console.log('Heartbeat skipped:', e);
-          }
+          try { await reportStatus('On Duty'); } catch (e) {}
         }
       }
     }, 480000); 
@@ -205,43 +201,44 @@
       }
     }
 
-    async function toggleDuty() {
+    async function toggleDuty(btnEl) {
       const name = document.getElementById('studentName').value.trim();
       if (!name) return await customAlert('請先輸入姓名！');
 
+      if (btnEl) btnEl.disabled = true;
+
       saveName();
       isOnDuty = !isOnDuty;
-      lastUserActionTime = Date.now(); 
       localStorage.setItem('is_on_duty', isOnDuty ? 'true' : 'false');
       updateDutyUI();
 
-      if (isOnDuty) {
-        try {
+      try {
+        if (isOnDuty) {
           await reportStatus('On Duty');
-        } catch(e) {
-          console.error(e);
-        }
-        connectSSE();
-        setupWebPush().catch(err => console.log('Push skipped:', err));
-      } else {
-        try {
+          connectSSE();
+          setupWebPush().catch(err => console.log('Push skipped:', err));
+        } else {
           await reportStatus('Off Duty');
-        } catch(e) {
-          console.error(e);
+          await forceOffDuty();
         }
-        await forceOffDuty();
+      } finally {
+        if (btnEl) setTimeout(() => { btnEl.disabled = false; }, 500);
       }
     }
 
     async function acceptMission(missionId) {
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已接案');
+      // ⚡ 樂觀更新：立刻改按鈕狀態為已接案
+      renderMissions(cachedMissions);
       await reportStatus('已接案', missionId);
     }
 
     async function arriveScene(missionId) {
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已到場');
+      // ⚡ 樂觀更新
+      renderMissions(cachedMissions);
       await reportStatus('已到場', missionId);
     }
 
@@ -267,6 +264,8 @@
       if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
         stopVibration();
         localStorage.setItem(`mission_status_${missionId}`, '已離場');
+        // ⚡ 樂觀更新
+        renderMissions(cachedMissions);
         await reportStatus('已離場', missionId);
       }
     }
@@ -275,6 +274,8 @@
       if (await customConfirm('確定要拒絕此案件嗎？')) {
         stopVibration();
         localStorage.setItem(`mission_status_${missionId}`, '已拒絕');
+        // ⚡ 樂觀更新
+        renderMissions(cachedMissions);
         await reportStatus('已拒絕', missionId);
       }
     }
@@ -344,7 +345,10 @@
             }
           }
 
-          if (data.activeMissions) renderMissions(data.activeMissions);
+          if (data.activeMissions) {
+            cachedMissions = data.activeMissions;
+            renderMissions(data.activeMissions);
+          }
         } catch (err) {
           console.error('SSE Error:', err);
         }
@@ -379,7 +383,7 @@
 
       if (standbyBox) standbyBox.classList.add('hidden');
 
-      // ⚡ 關鍵防護：如果使用者正處於 Focus 打字狀態，跳過自動重繪畫面以避免打字被打斷
+      // ⚡ 輸入保護：打字中跳過渲染，防文字被打斷
       const activeEl = document.activeElement;
       if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
         return;

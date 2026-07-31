@@ -61,16 +61,16 @@
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h2 class="text-sm font-bold text-gray-400 mb-4 tracking-wider">2. 選擇案件類型 (點擊按鈕即刻派遣)</h2>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <button onclick="dispatch('內科派遣')" class="p-4 bg-blue-600 hover:bg-blue-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+          <button onclick="dispatch('內科派遣', this)" class="p-4 bg-blue-600 hover:bg-blue-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
             內科派遣
           </button>
-          <button onclick="dispatch('外科/創傷')" class="p-4 bg-orange-600 hover:bg-orange-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+          <button onclick="dispatch('外科/創傷', this)" class="p-4 bg-orange-600 hover:bg-orange-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
             外科/創傷
           </button>
-          <button onclick="dispatch('OHCA 派遣')" class="p-4 bg-red-600 hover:bg-red-500 font-extrabold text-xl rounded-xl shadow-lg active:scale-95 transition border-2 border-red-300">
+          <button onclick="dispatch('OHCA 派遣', this)" class="p-4 bg-red-600 hover:bg-red-500 font-extrabold text-xl rounded-xl shadow-lg active:scale-95 transition border-2 border-red-300">
             OHCA 派遣
           </button>
-          <button onclick="dispatch('全員緊急召集')" class="p-4 bg-purple-600 hover:bg-purple-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
+          <button onclick="dispatch('全員緊急召集', this)" class="p-4 bg-purple-600 hover:bg-purple-500 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition">
             全員召集
           </button>
         </div>
@@ -105,12 +105,8 @@
       </div>
       <p id="customConfirmMessage" class="text-gray-200 text-sm leading-relaxed"></p>
       <div class="flex justify-end space-x-3 pt-2">
-        <button id="modalConfirmCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">
-          取消
-        </button>
-        <button id="modalConfirmOkBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition">
-          確定
-        </button>
+        <button id="modalConfirmCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">取消</button>
+        <button id="modalConfirmOkBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition">確定</button>
       </div>
     </div>
   </div>
@@ -124,9 +120,7 @@
       </div>
       <p id="customAlertMessage" class="text-gray-200 text-sm leading-relaxed"></p>
       <div class="flex justify-end pt-2">
-        <button id="modalAlertOkBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg text-sm transition">
-          我知道了
-        </button>
+        <button id="modalAlertOkBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg text-sm transition">我知道了</button>
       </div>
     </div>
   </div>
@@ -140,12 +134,8 @@
       <p id="customPromptMessage" class="text-gray-200 text-sm leading-relaxed"></p>
       <input id="customPromptInput" type="text" class="w-full bg-gray-900 border border-gray-600 p-2.5 rounded-lg text-white text-sm focus:outline-none focus:border-blue-400">
       <div class="flex justify-end space-x-3 pt-2">
-        <button id="modalPromptCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">
-          取消
-        </button>
-        <button id="modalPromptOkBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition">
-          確定
-        </button>
+        <button id="modalPromptCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">取消</button>
+        <button id="modalPromptOkBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-sm transition">確定</button>
       </div>
     </div>
   </div>
@@ -153,7 +143,7 @@
   <script>
     let isEditMode = false;
     let evtSource = null;
-    let activeFocusedInputId = null;
+    let currentLocations = [];
     
     function escapeHtml(str) {
       if (!str) return '';
@@ -242,11 +232,14 @@
         try {
           const data = JSON.parse(e.data);
           
-          if (data.customLocations && !isEditMode) renderLocations(data.customLocations);
+          if (data.customLocations) {
+            currentLocations = data.customLocations;
+            if (!isEditMode) renderLocations(data.customLocations);
+          }
           if (data.studentStatus) renderStudents(data.studentStatus);
           if (data.activeMissions) renderMissions(data.activeMissions);
         } catch (err) {
-          console.error('SSE 資料解析錯誤:', err);
+          console.error('SSE 解析錯誤:', err);
         }
       };
 
@@ -262,10 +255,10 @@
       const wall = document.getElementById('locationWall');
       wall.innerHTML = locations.map(loc => `
         <div class="inline-flex items-center bg-gray-700 rounded-lg overflow-hidden border border-gray-600">
-          <button onclick="selectLocation('${loc}')" class="px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600 active:scale-95 transition">
-            ${loc}
+          <button onclick="selectLocation('${escapeHtml(loc)}')" class="px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600 active:scale-95 transition">
+            ${escapeHtml(loc)}
           </button>
-          <button onclick="deleteLocation('${loc}')" class="delete-btn px-2 py-2 bg-red-600/80 hover:bg-red-600 text-white text-xs font-bold transition">✕</button>
+          <button onclick="deleteLocation('${escapeHtml(loc)}')" class="delete-btn px-2 py-2 bg-red-600/80 hover:bg-red-600 text-white text-xs font-bold transition">✕</button>
         </div>
       `).join('');
     }
@@ -291,16 +284,27 @@
     async function addLocation() {
       const loc = await customPrompt('請輸入新增的常用校園地點：');
       if (loc && loc.trim() !== '') {
+        const cleanLoc = loc.trim();
+        // ⚡ 樂觀更新：前端畫面立即顯示地點
+        if (!currentLocations.includes(cleanLoc)) {
+          currentLocations.push(cleanLoc);
+          renderLocations(currentLocations);
+        }
+
         await fetch('/api/locations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ location: loc.trim() })
+          body: JSON.stringify({ location: cleanLoc })
         });
       }
     }
 
     async function deleteLocation(loc) {
       if (await customConfirm(`確定要刪除地點「${loc}」嗎？`)) {
+        // ⚡ 樂觀更新：立刻從畫面移除
+        currentLocations = currentLocations.filter(l => l !== loc);
+        renderLocations(currentLocations);
+
         await fetch('/api/locations', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -309,7 +313,7 @@
       }
     }
 
-    async function dispatch(type) {
+    async function dispatch(type, btnEl) {
       const locationInput = document.getElementById('selectedLocation');
       const detailInput = document.getElementById('locationDetail');
       
@@ -318,16 +322,21 @@
 
       if (!location) return await customAlert('請輸入或選擇案件地點！');
 
-      const res = await fetch('/api/dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, location, detail })
-      });
+      // ⚡ 防重複點擊
+      if (btnEl) btnEl.disabled = true;
 
-      locationInput.value = '';
-      detailInput.value = '';
+      try {
+        await fetch('/api/dispatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, location, detail })
+        });
 
-      connectSSE();
+        locationInput.value = '';
+        detailInput.value = '';
+      } finally {
+        if (btnEl) setTimeout(() => { btnEl.disabled = false; }, 1000);
+      }
     }
 
     async function sendAdminChat(missionId) {
@@ -392,7 +401,6 @@
         return;
       }
 
-      // ⚡ 保存正在輸入中的草稿文字與焦點元素 ID
       const activeEl = document.activeElement;
       let focusedInputId = null;
       let currentDraftText = '';
@@ -492,13 +500,9 @@
                 
                 <div class="flex space-x-2 pt-2">
                   ${!isClosed ? `
-                    <button onclick="closeSingleMission(${m.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded shadow transition">
-                      結案
-                    </button>
+                    <button onclick="closeSingleMission(${m.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded shadow transition">結案</button>
                   ` : ''}
-                  <button onclick="deleteSingleMission(${m.id})" class="px-3 py-1 bg-red-800/80 hover:bg-red-700 text-red-200 text-xs font-bold rounded shadow transition">
-                    刪除
-                  </button>
+                  <button onclick="deleteSingleMission(${m.id})" class="px-3 py-1 bg-red-800/80 hover:bg-red-700 text-red-200 text-xs font-bold rounded shadow transition">刪除</button>
                 </div>
               </div>
             </div>
@@ -526,9 +530,7 @@
                 ${!isClosed ? `
                   <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
                     <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
-                    <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
-                      發送
-                    </button>
+                    <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">發送</button>
                   </div>
                 ` : ''}
               </div>
@@ -541,7 +543,6 @@
       document.querySelectorAll('.chat-scroll-box').forEach(box => { box.scrollTop = box.scrollHeight; });
       document.querySelectorAll('.log-scroll-box').forEach(box => { box.scrollTop = box.scrollHeight; });
 
-      // ⚡ 還原打字草稿與 Focus 焦點
       if (focusedInputId) {
         const targetInput = document.getElementById(focusedInputId);
         if (targetInput) {
