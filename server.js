@@ -189,18 +189,13 @@ app.post('/api/student/status', async (req, res) => {
       if (targetMission) {
         if (!targetMission.responseLogs) targetMission.responseLogs = [];
 
-        const isDuplicate = targetMission.responseLogs.some(
-          l => l.name === name && l.status === status && (Date.now() - Number(l.id.split('_')[0]) < 1000)
-        );
-
-        if (!isDuplicate) {
-          targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
-          if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
-          else if (status === '已到場') targetMission.status = '已到場';
-          cache.activeMissions = data.activeMissions;
-          await redis.set('activeMissions', data.activeMissions);
-          hasChanged = true;
-        }
+        targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
+        if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
+        else if (status === '已到場') targetMission.status = '已到場';
+        
+        cache.activeMissions = data.activeMissions;
+        await redis.set('activeMissions', data.activeMissions);
+        hasChanged = true;
       }
     }
   }
