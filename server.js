@@ -144,13 +144,12 @@ app.post('/api/dispatch', async (req, res) => {
   res.json({ success: true, mission });
 });
 
-// ⚡ 修復：防止對話紀錄遭狀態更新覆蓋
 app.post('/api/student/status', async (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
 
   const nowStr = getTimeToMinute();
-  const data = await getSystemData(true); // 強制獲取最新 Redis 資料
+  const data = await getSystemData(true);
   let hasChanged = false;
 
   if (status === '現場訊息') {
@@ -185,12 +184,15 @@ app.post('/api/student/status', async (req, res) => {
       const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.responseLogs) targetMission.responseLogs = [];
-        targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
-        if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
-        else if (status === '已到場') targetMission.status = '已到場';
-        cache.activeMissions = data.activeMissions;
-        await redis.set('activeMissions', data.activeMissions);
-        hasChanged = true;
+        const lastLog = targetMission.responseLogs[targetMission.responseLogs.length - 1];
+        if (!lastLog || lastLog.name !== name || lastLog.status !== status) {
+          targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
+          if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
+          else if (status === '已到場') targetMission.status = '已到場';
+          cache.activeMissions = data.activeMissions;
+          await redis.set('activeMissions', data.activeMissions);
+          hasChanged = true;
+        }
       }
     }
   }

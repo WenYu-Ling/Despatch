@@ -354,13 +354,9 @@
       const inputId = `admin_chat_input_${missionId}`;
       const input = document.getElementById(inputId);
       if (!input) return;
-
       const message = input.value.trim();
       if (!message) return;
-
       input.value = '';
-
-      // ⚡ 樂觀更新：立刻把廣播訊息推上畫面，0 毫秒延遲！
       const targetMission = cachedMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.chatMessages) targetMission.chatMessages = [];
@@ -431,12 +427,9 @@
         focusedInputId = activeEl.id;
         currentDraftText = activeEl.value;
       }
-
-      // ⚡ 打字保護：正在輸入時跳過背景自動刷新（除非是手動點擊發送觸發的 forceRender）
       if (!forceRender && focusedInputId) {
         return;
       }
-
       log.innerHTML = missions.map(m => {
         const isClosed = m.status === '已結案';
         

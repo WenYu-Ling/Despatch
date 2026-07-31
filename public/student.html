@@ -84,6 +84,7 @@
     let isOnDuty = false;
     let evtSource = null;
     let cachedMissions = [];
+    let isSubmitting = false;
 
     function escapeHtml(str) {
       if (!str) return '';
@@ -151,15 +152,6 @@
       const name = document.getElementById('studentName').value.trim();
       localStorage.setItem('student_name', name);
     }
-    
-    setInterval(async () => {
-      if (isOnDuty) {
-        const name = document.getElementById('studentName').value.trim();
-        if (name) {
-          try { await reportStatus('On Duty'); } catch (e) {}
-        }
-      }
-    }, 480000); 
 
     function stopVibration() {
       if (navigator.vibrate) navigator.vibrate(0);
@@ -236,21 +228,45 @@
       }
     }
 
-    async function acceptMission(missionId) {
+    async function acceptMission(missionId, btnEl) {
+      if (btnEl) btnEl.disabled = true;
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已接案');
       renderMissions(cachedMissions);
       await reportStatus('已接案', missionId);
     }
 
-    async function arriveScene(missionId) {
+    async function arriveScene(missionId, btnEl) {
+      if (btnEl) btnEl.disabled = true;
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已到場');
       renderMissions(cachedMissions);
       await reportStatus('已到場', missionId);
     }
 
+    async function leaveScene(missionId, btnEl) {
+      if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
+        if (btnEl) btnEl.disabled = true;
+        stopVibration();
+        localStorage.setItem(`mission_status_${missionId}`, '已離場');
+        renderMissions(cachedMissions);
+        await reportStatus('已離場', missionId);
+      }
+    }
+
+    async function rejectMission(missionId, btnEl) {
+      if (await customConfirm('確定要拒絕此案件嗎？')) {
+        if (btnEl) btnEl.disabled = true;
+        stopVibration();
+        localStorage.setItem(`mission_status_${missionId}`, '已拒絕');
+        renderMissions(cachedMissions);
+        await reportStatus('已拒絕', missionId);
+      }
+    }
+
     async function submitReport(missionId) {
+      if (isSubmitting) return;
+
       const name = document.getElementById('studentName').value.trim();
       const input = document.getElementById(`report_input_${missionId}`);
       if (!input) return;
@@ -258,9 +274,8 @@
       const text = input.value.trim();
       if (!text) return await customAlert('請先輸入訊息內容！');
 
+      isSubmitting = true;
       input.value = '';
-
-      // ⚡ 樂觀更新：立刻把對話貼在快取畫面上，0 秒延遲！
       const targetMission = cachedMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.chatMessages) targetMission.chatMessages = [];
@@ -270,7 +285,7 @@
           text: text,
           time: getTimeToMinute()
         });
-        renderMissions(cachedMissions, true); // 強制重繪對話框
+        renderMissions(cachedMissions, true);
       }
 
       try {
@@ -278,24 +293,8 @@
       } catch (e) {
         console.error('Status report failed:', e);
         await customAlert('網路連線異常，訊息發送失敗！');
-      }
-    }
-
-    async function leaveScene(missionId) {
-      if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
-        stopVibration();
-        localStorage.setItem(`mission_status_${missionId}`, '已離場');
-        renderMissions(cachedMissions);
-        await reportStatus('已離場', missionId);
-      }
-    }
-
-    async function rejectMission(missionId) {
-      if (await customConfirm('確定要拒絕此案件嗎？')) {
-        stopVibration();
-        localStorage.setItem(`mission_status_${missionId}`, '已拒絕');
-        renderMissions(cachedMissions);
-        await reportStatus('已拒絕', missionId);
+      } finally {
+        isSubmitting = false;
       }
     }
 
@@ -401,8 +400,6 @@
       }
 
       if (standbyBox) standbyBox.classList.add('hidden');
-
-      // ⚡ 輸入保護：正在 Focus 打字時跳過背景重繪（除非是發送訊息觸發的 forceRender）
       const activeEl = document.activeElement;
       if (!forceRender && activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
         return;
@@ -451,23 +448,23 @@
             <div class="pt-2">
               ${myStatus === '未回應' ? `
                 <div class="grid grid-cols-2 gap-3">
-                  <button onclick="acceptMission(${m.id})" class="py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
+                  <button onclick="acceptMission(${m.id}, this)" class="py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition disabled:opacity-50">
                     接受案件
                   </button>
-                  <button onclick="rejectMission(${m.id})" class="py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-extrabold rounded-xl active:scale-95 transition">
+                  <button onclick="rejectMission(${m.id}, this)" class="py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-extrabold rounded-xl active:scale-95 transition disabled:opacity-50">
                     無法前往
                   </button>
                 </div>
               ` : ''}
 
               ${myStatus === '已接案' ? `
-                <button onclick="arriveScene(${m.id})" class="w-full py-3.5 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-black text-lg rounded-xl shadow-lg active:scale-95 transition">
+                <button onclick="arriveScene(${m.id}, this)" class="w-full py-3.5 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-black text-lg rounded-xl shadow-lg active:scale-95 transition disabled:opacity-50">
                   已到達現場
                 </button>
               ` : ''}
 
               ${myStatus === '已到場' ? `
-                <button onclick="leaveScene(${m.id})" class="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition">
+                <button onclick="leaveScene(${m.id}, this)" class="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-extrabold rounded-xl shadow-lg active:scale-95 transition disabled:opacity-50">
                   已離場
                 </button>
               ` : ''}
