@@ -95,6 +95,16 @@
         .replace(/'/g, '&#39;');
     }
 
+    function getTimeToMinute() {
+      const now = new Date();
+      return new Intl.DateTimeFormat('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(now);
+    }
+
     function customConfirm(message) {
       return new Promise((resolve) => {
         const modal = document.getElementById('customConfirmModal');
@@ -229,7 +239,6 @@
     async function acceptMission(missionId) {
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已接案');
-      // ⚡ 樂觀更新：立刻改按鈕狀態為已接案
       renderMissions(cachedMissions);
       await reportStatus('已接案', missionId);
     }
@@ -237,12 +246,12 @@
     async function arriveScene(missionId) {
       stopVibration();
       localStorage.setItem(`mission_status_${missionId}`, '已到場');
-      // ⚡ 樂觀更新
       renderMissions(cachedMissions);
       await reportStatus('已到場', missionId);
     }
 
     async function submitReport(missionId) {
+      const name = document.getElementById('studentName').value.trim();
       const input = document.getElementById(`report_input_${missionId}`);
       if (!input) return;
 
@@ -251,12 +260,24 @@
 
       input.value = '';
 
+      // ⚡ 樂觀更新：立刻把對話貼在快取畫面上，0 秒延遲！
+      const targetMission = cachedMissions.find(m => m.id === Number(missionId));
+      if (targetMission) {
+        if (!targetMission.chatMessages) targetMission.chatMessages = [];
+        targetMission.chatMessages.push({
+          sender: name,
+          role: 'student',
+          text: text,
+          time: getTimeToMinute()
+        });
+        renderMissions(cachedMissions, true); // 強制重繪對話框
+      }
+
       try {
         await reportStatus('現場訊息', missionId, text);
       } catch (e) {
         console.error('Status report failed:', e);
         await customAlert('網路連線異常，訊息發送失敗！');
-        input.value = text;
       }
     }
 
@@ -264,7 +285,6 @@
       if (await customConfirm('確定已完成任務並離開現場？（案件將從您的畫面移除）')) {
         stopVibration();
         localStorage.setItem(`mission_status_${missionId}`, '已離場');
-        // ⚡ 樂觀更新
         renderMissions(cachedMissions);
         await reportStatus('已離場', missionId);
       }
@@ -274,7 +294,6 @@
       if (await customConfirm('確定要拒絕此案件嗎？')) {
         stopVibration();
         localStorage.setItem(`mission_status_${missionId}`, '已拒絕');
-        // ⚡ 樂觀更新
         renderMissions(cachedMissions);
         await reportStatus('已拒絕', missionId);
       }
@@ -362,7 +381,7 @@
       };
     }
 
-    function renderMissions(missions) {
+    function renderMissions(missions, forceRender = false) {
       const container = document.getElementById('missionContainer');
       const standbyBox = document.getElementById('standbyBox');
       const myName = document.getElementById('studentName').value.trim();
@@ -383,9 +402,9 @@
 
       if (standbyBox) standbyBox.classList.add('hidden');
 
-      // ⚡ 輸入保護：打字中跳過渲染，防文字被打斷
+      // ⚡ 輸入保護：正在 Focus 打字時跳過背景重繪（除非是發送訊息觸發的 forceRender）
       const activeEl = document.activeElement;
-      if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
+      if (!forceRender && activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
         return;
       }
 

@@ -144,7 +144,18 @@
     let isEditMode = false;
     let evtSource = null;
     let currentLocations = [];
-    
+    let cachedMissions = [];
+
+    function getTimeToMinute() {
+      const now = new Date();
+      return new Intl.DateTimeFormat('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(now);
+    }
+
     function escapeHtml(str) {
       if (!str) return '';
       return String(str)
@@ -237,7 +248,10 @@
             if (!isEditMode) renderLocations(data.customLocations);
           }
           if (data.studentStatus) renderStudents(data.studentStatus);
-          if (data.activeMissions) renderMissions(data.activeMissions);
+          if (data.activeMissions) {
+            cachedMissions = data.activeMissions;
+            renderMissions(data.activeMissions);
+          }
         } catch (err) {
           console.error('SSE 解析錯誤:', err);
         }
@@ -285,7 +299,6 @@
       const loc = await customPrompt('請輸入新增的常用校園地點：');
       if (loc && loc.trim() !== '') {
         const cleanLoc = loc.trim();
-        // ⚡ 樂觀更新：前端畫面立即顯示地點
         if (!currentLocations.includes(cleanLoc)) {
           currentLocations.push(cleanLoc);
           renderLocations(currentLocations);
@@ -301,7 +314,6 @@
 
     async function deleteLocation(loc) {
       if (await customConfirm(`確定要刪除地點「${loc}」嗎？`)) {
-        // ⚡ 樂觀更新：立刻從畫面移除
         currentLocations = currentLocations.filter(l => l !== loc);
         renderLocations(currentLocations);
 
@@ -322,7 +334,6 @@
 
       if (!location) return await customAlert('請輸入或選擇案件地點！');
 
-      // ⚡ 防重複點擊
       if (btnEl) btnEl.disabled = true;
 
       try {
@@ -349,6 +360,19 @@
 
       input.value = '';
 
+      // ⚡ 樂觀更新：立刻把廣播訊息推上畫面，0 毫秒延遲！
+      const targetMission = cachedMissions.find(m => m.id === Number(missionId));
+      if (targetMission) {
+        if (!targetMission.chatMessages) targetMission.chatMessages = [];
+        targetMission.chatMessages.push({
+          sender: '派遣端',
+          role: 'admin',
+          text: message,
+          time: getTimeToMinute()
+        });
+        renderMissions(cachedMissions, true);
+      }
+
       try {
         const res = await fetch('/api/missions/chat', {
           method: 'POST',
@@ -359,12 +383,10 @@
         const result = await res.json();
         if (!result.success) {
           await customAlert('訊息發送失敗，請再試一次');
-          input.value = message;
         }
       } catch (err) {
         console.error('Send message error:', err);
         await customAlert('網路連線異常，訊息發送失敗');
-        input.value = message;
       }
     }
 
@@ -394,7 +416,7 @@
       }
     }
 
-    function renderMissions(missions) {
+    function renderMissions(missions, forceRender = false) {
       const log = document.getElementById('missionLog');
       if (!missions || missions.length === 0) {
         log.innerHTML = `<p class="text-gray-500 text-sm">目前無處理中案件</p>`;
@@ -408,6 +430,11 @@
       if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('admin_chat_input_')) {
         focusedInputId = activeEl.id;
         currentDraftText = activeEl.value;
+      }
+
+      // ⚡ 打字保護：正在輸入時跳過背景自動刷新（除非是手動點擊發送觸發的 forceRender）
+      if (!forceRender && focusedInputId) {
+        return;
       }
 
       log.innerHTML = missions.map(m => {
@@ -500,9 +527,13 @@
                 
                 <div class="flex space-x-2 pt-2">
                   ${!isClosed ? `
-                    <button onclick="closeSingleMission(${m.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded shadow transition">結案</button>
+                    <button onclick="closeSingleMission(${m.id})" class="px-3 py-1 bg-green-700 hover:bg-green-600 text-white text-xs font-bold rounded shadow transition">
+                      結案
+                    </button>
                   ` : ''}
-                  <button onclick="deleteSingleMission(${m.id})" class="px-3 py-1 bg-red-800/80 hover:bg-red-700 text-red-200 text-xs font-bold rounded shadow transition">刪除</button>
+                  <button onclick="deleteSingleMission(${m.id})" class="px-3 py-1 bg-red-800/80 hover:bg-red-700 text-red-200 text-xs font-bold rounded shadow transition">
+                    刪除
+                  </button>
                 </div>
               </div>
             </div>
@@ -530,7 +561,9 @@
                 ${!isClosed ? `
                   <div class="flex space-x-2 pt-2 border-t border-gray-700/50">
                     <input id="admin_chat_input_${m.id}" type="text" placeholder="發送或補充訊息給成員..." onkeydown="if(event.key==='Enter') sendAdminChat(${m.id})" class="flex-1 bg-gray-800 text-white p-2 rounded text-xs border border-gray-600 focus:outline-none focus:border-yellow-400">
-                    <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">發送</button>
+                    <button onclick="sendAdminChat(${m.id})" class="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold text-xs rounded transition whitespace-nowrap">
+                      發送
+                    </button>
                   </div>
                 ` : ''}
               </div>

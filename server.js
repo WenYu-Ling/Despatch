@@ -144,19 +144,22 @@ app.post('/api/dispatch', async (req, res) => {
   res.json({ success: true, mission });
 });
 
+// ⚡ 修復：防止對話紀錄遭狀態更新覆蓋
 app.post('/api/student/status', async (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
 
   const nowStr = getTimeToMinute();
-  const data = await getSystemData();
+  const data = await getSystemData(true); // 強制獲取最新 Redis 資料
   let hasChanged = false;
 
   if (status === '現場訊息') {
     if (missionId) {
       const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
+        if (!targetMission.chatMessages) targetMission.chatMessages = [];
         targetMission.chatMessages.push({ sender: name, role: 'student', text: reportText || '', time: nowStr });
+        cache.activeMissions = data.activeMissions;
         await redis.set('activeMissions', data.activeMissions);
         hasChanged = true;
       }
@@ -181,9 +184,11 @@ app.post('/api/student/status', async (req, res) => {
     if (missionId) {
       const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
+        if (!targetMission.responseLogs) targetMission.responseLogs = [];
         targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
         if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
         else if (status === '已到場') targetMission.status = '已到場';
+        cache.activeMissions = data.activeMissions;
         await redis.set('activeMissions', data.activeMissions);
         hasChanged = true;
       }
@@ -196,10 +201,12 @@ app.post('/api/student/status', async (req, res) => {
 
 app.post('/api/missions/chat', async (req, res) => {
   const { missionId, message } = req.body;
-  const data = await getSystemData();
+  const data = await getSystemData(true);
   const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
   if (targetMission && message) {
+    if (!targetMission.chatMessages) targetMission.chatMessages = [];
     targetMission.chatMessages.push({ sender: '派遣端', role: 'admin', text: message, time: getTimeToMinute() });
+    cache.activeMissions = data.activeMissions;
     await redis.set('activeMissions', data.activeMissions);
     await broadcastSSE({ action: 'UPDATE_ALL' });
   }
@@ -233,7 +240,6 @@ app.post('/api/missions/clear', async (req, res) => {
   res.json({ success: true });
 });
 
-// ⚡ 地點 API 補齊新增與刪除功能
 app.get('/api/locations', async (req, res) => {
   const data = await getSystemData();
   res.json(data.customLocations);
