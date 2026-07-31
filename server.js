@@ -184,6 +184,7 @@ app.post('/api/student/status', async (req, res) => {
       const targetMission = data.activeMissions.find(m => m.id === Number(missionId));
       if (targetMission) {
         if (!targetMission.responseLogs) targetMission.responseLogs = [];
+
         const lastLog = targetMission.responseLogs[targetMission.responseLogs.length - 1];
         if (!lastLog || lastLog.name !== name || lastLog.status !== status) {
           targetMission.responseLogs.push({ id: Date.now(), name, status, time: nowStr });
