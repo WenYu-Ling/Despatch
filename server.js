@@ -190,8 +190,22 @@ app.post('/api/student/status', async (req, res) => {
         if (!targetMission.responseLogs) targetMission.responseLogs = [];
 
         targetMission.responseLogs.push({ id: generateUniqueId(), name, status, time: nowStr });
-        if (status === '已接案' && targetMission.status === '派遣中') targetMission.status = '已接案';
-        else if (status === '已到場') targetMission.status = '已到場';
+
+        const studentLatestStatus = {};
+        targetMission.responseLogs.forEach(l => {
+          studentLatestStatus[l.name] = l.status;
+        });
+
+        const participants = Object.keys(studentLatestStatus);
+        const isAllLeft = participants.length > 0 && participants.every(n => studentLatestStatus[n] === '已離場');
+
+        if (isAllLeft) {
+          targetMission.status = '已離場';
+        } else if (status === '已到場') {
+          targetMission.status = '已到場';
+        } else if (status === '已接案' && targetMission.status === '派遣中') {
+          targetMission.status = '已接案';
+        }
         
         cache.activeMissions = data.activeMissions;
         await redis.set('activeMissions', data.activeMissions);

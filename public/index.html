@@ -444,7 +444,16 @@
         const isClosed = m.status === '已結案';
         const logs = m.responseLogs || [];
 
-        const cardBgClass = isClosed 
+        const studentLatestStatus = {};
+        logs.forEach(l => {
+          studentLatestStatus[l.name] = l.status;
+        });
+
+        const participants = Object.keys(studentLatestStatus);
+        const hasParticipants = participants.length > 0;
+        const isAllLeft = hasParticipants && participants.every(name => studentLatestStatus[name] === '已離場');
+
+        const cardBgClass = (isClosed || isAllLeft)
           ? 'bg-gray-800/60 border-gray-700' 
           : 'bg-red-950/40 border-red-700/60';
 
@@ -454,6 +463,9 @@
         if (isClosed) {
           badgeClass = 'bg-gray-700 text-gray-400';
           displayMissionStatus = '已結案';
+        } else if (isAllLeft || m.status === '已離場') {
+          badgeClass = 'bg-green-900/80 text-green-300 border border-green-500 font-bold';
+          displayMissionStatus = '已離場';
         } else if (m.status === '已接案') {
           badgeClass = 'bg-blue-600 text-white font-extrabold border border-blue-400 animate-pulse';
           displayMissionStatus = '已接案';
