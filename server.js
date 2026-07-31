@@ -26,7 +26,6 @@ let cache = {
   subscriptions: null
 };
 
-// 統一讀取資料
 async function getSystemData(forceRefresh = false) {
   if (forceRefresh || !cache.activeMissions || !cache.studentStatus) {
     const [missions, status, locations, subs] = await Promise.all([
@@ -69,17 +68,14 @@ function getTimeToMinute() {
   }).format(now);
 }
 
-// 1. VAPID Key API
 app.get('/api/vapid-public-key', (req, res) => res.json({ publicKey: publicVapidKey }));
 
-// 2. Push API
 app.post('/api/subscribe', async (req, res) => {
   const { subscription, name } = req.body;
   if (subscription && subscription.endpoint && name) {
     const data = await getSystemData();
     let subscriptions = data.subscriptions;
     
-    // 檢查是否已經存在相同的 Endpoint
     const exists = subscriptions.some(sub => sub.name === name && sub.endpoint === subscription.endpoint);
     
     if (!exists) {
@@ -103,7 +99,6 @@ app.post('/api/subscribe', async (req, res) => {
   res.status(201).json({ success: true });
 });
 
-// 3. 派遣 API (只向 On Duty 成員發送 Push 推播)
 app.post('/api/dispatch', async (req, res) => {
   const { type, location, detail } = req.body;
   if (!type || !location) return res.status(400).json({ success: false, error: 'Type/location required.' });
@@ -130,7 +125,6 @@ app.post('/api/dispatch', async (req, res) => {
     url: '/student.html'
   });
 
-  // 僅針對目前「On Duty」的成員發送 Web Push 通知
   const targetSubscriptions = data.subscriptions.filter(sub => {
     const statusObj = data.studentStatus[sub.name];
     return statusObj && statusObj.status !== 'Off Duty';
@@ -150,7 +144,6 @@ app.post('/api/dispatch', async (req, res) => {
   res.json({ success: true, mission });
 });
 
-// 4. 狀態與訊息 API (改為 Off Duty 時自動移除其 Push 訂閱)
 app.post('/api/student/status', async (req, res) => {
   const { name, status, missionId, reportText } = req.body;
   if (!name || !status) return res.status(400).json({ success: false, error: 'Missing fields.' });
@@ -172,7 +165,6 @@ app.post('/api/student/status', async (req, res) => {
     const newStatus = (status === 'Off Duty') ? 'Off Duty' : 'On Duty';
     const currentObj = data.studentStatus[name];
 
-    // 如果成員改為 Off Duty，同時清理其 Push 訂閱
     if (newStatus === 'Off Duty') {
       data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
       cache.subscriptions = data.subscriptions;
@@ -202,7 +194,6 @@ app.post('/api/student/status', async (req, res) => {
   res.json({ success: true });
 });
 
-// 5. 派遣端訊息 API
 app.post('/api/missions/chat', async (req, res) => {
   const { missionId, message } = req.body;
   const data = await getSystemData();
@@ -215,7 +206,6 @@ app.post('/api/missions/chat', async (req, res) => {
   res.json({ success: true });
 });
 
-// 6~8. 結案與刪除 API
 app.post('/api/missions/close-single', async (req, res) => {
   const data = await getSystemData();
   const mission = data.activeMissions.find(m => m.id === req.body.id);
@@ -243,13 +233,38 @@ app.post('/api/missions/clear', async (req, res) => {
   res.json({ success: true });
 });
 
-// 9. 地點 API
+// ⚡ 地點 API 補齊新增與刪除功能
 app.get('/api/locations', async (req, res) => {
   const data = await getSystemData();
   res.json(data.customLocations);
 });
 
-// 10. SSE 連線 API
+app.post('/api/locations', async (req, res) => {
+  const { location } = req.body;
+  if (location) {
+    const data = await getSystemData();
+    if (!data.customLocations.includes(location)) {
+      data.customLocations.push(location);
+      cache.customLocations = data.customLocations;
+      await redis.set('customLocations', data.customLocations);
+      await broadcastSSE({ action: 'UPDATE_LOCATIONS' });
+    }
+  }
+  res.json({ success: true });
+});
+
+app.delete('/api/locations', async (req, res) => {
+  const { location } = req.body;
+  if (location) {
+    const data = await getSystemData();
+    data.customLocations = data.customLocations.filter(l => l !== location);
+    cache.customLocations = data.customLocations;
+    await redis.set('customLocations', data.customLocations);
+    await broadcastSSE({ action: 'UPDATE_LOCATIONS' });
+  }
+  res.json({ success: true });
+});
+
 app.get('/api/stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -266,7 +281,6 @@ app.get('/api/stream', async (req, res) => {
   });
 });
 
-// 11. 手動刪除/關閉成員 API (確實區分離線刪除與強制切換 Off)
 app.post('/api/student/remove', async (req, res) => {
   const { name } = req.body;
   if (name) {
@@ -274,11 +288,9 @@ app.post('/api/student/remove', async (req, res) => {
     
     if (data.studentStatus[name]) {
       if (data.studentStatus[name].status === 'Off Duty') {
-        // 已是 Off Duty 狀態，徹底刪除 Key 並移除 Push 訂閱
         delete data.studentStatus[name];
         data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
       } else {
-        // 原本是 On Duty，強行切換成 Off Duty 並移除 Push 訂閱
         data.studentStatus[name].status = 'Off Duty';
         data.studentStatus[name].updatedAt = getTimeToMinute();
         data.subscriptions = data.subscriptions.filter(sub => sub.name !== name);
@@ -305,7 +317,6 @@ app.post('/api/student/remove', async (req, res) => {
   res.json({ success: false });
 });
 
-// 12. 心跳 Ping
 setInterval(() => {
   sseClients.forEach(client => {
     try { client.res.write(': ping\n\n'); } catch (e) {}

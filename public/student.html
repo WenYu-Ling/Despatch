@@ -61,12 +61,8 @@
       </div>
       <p id="customConfirmMessage" class="text-gray-200 text-sm leading-relaxed"></p>
       <div class="flex justify-end space-x-3 pt-2">
-        <button id="modalConfirmCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">
-          取消
-        </button>
-        <button id="modalConfirmOkBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition">
-          確定
-        </button>
+        <button id="modalConfirmCancelBtn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold rounded-lg text-sm transition">取消</button>
+        <button id="modalConfirmOkBtn" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition">確定</button>
       </div>
     </div>
   </div>
@@ -79,9 +75,7 @@
       </div>
       <p id="customAlertMessage" class="text-gray-200 text-sm leading-relaxed"></p>
       <div class="flex justify-end pt-2">
-        <button id="modalAlertOkBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg text-sm transition">
-          我知道了
-        </button>
+        <button id="modalAlertOkBtn" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold rounded-lg text-sm transition">我知道了</button>
       </div>
     </div>
   </div>
@@ -385,20 +379,15 @@
 
       if (standbyBox) standbyBox.classList.add('hidden');
 
-      // ⚡ 暫存打字草稿與 Focus 狀態
+      // ⚡ 關鍵防護：如果使用者正處於 Focus 打字狀態，跳過自動重繪畫面以避免打字被打斷
       const activeEl = document.activeElement;
-      let focusedInputId = null;
-      let currentDraftText = '';
-
       if (activeEl && activeEl.tagName === 'INPUT' && activeEl.id.startsWith('report_input_')) {
-        focusedInputId = activeEl.id;
-        currentDraftText = activeEl.value;
+        return;
       }
 
       container.innerHTML = visibleMissions.map(m => {
         const myStatus = localStorage.getItem(`mission_status_${m.id}`) || '未回應';
 
-        // ⚡ 核心修正：乾淨正確的 HTML 結構，移除導致爆框的重複 </div><div> 標籤
         const chatHtml = (m.chatMessages || []).map(msg => {
           const isAdmin = msg.role === 'admin';
           const isMe = !isAdmin && msg.sender === myName;
@@ -480,15 +469,6 @@
       document.querySelectorAll('.auto-scroll-chat').forEach(box => {
         box.scrollTop = box.scrollHeight;
       });
-
-      // ⚡ 還原打字草稿與 Focus 焦點
-      if (focusedInputId) {
-        const targetInput = document.getElementById(focusedInputId);
-        if (targetInput) {
-          targetInput.value = currentDraftText;
-          targetInput.focus();
-        }
-      }
     }
 
     function urlBase64ToUint8Array(base64String) {
